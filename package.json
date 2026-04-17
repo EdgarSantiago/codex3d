@@ -4,7 +4,8 @@
   "description": "Claude Code opened to any LLM — OpenAI, Gemini, DeepSeek, Ollama, and 200+ models",
   "type": "module",
   "bin": {
-    "openclaude": "./bin/openclaude"
+    "openclaude": "./bin/openclaude",
+    "codex3d": "./bin/codex3d"
   },
   "files": [
     "bin/",

@@ -37,10 +37,38 @@ npm install -g @gitlawb/openclaude
 
 If the install later reports `ripgrep not found`, install ripgrep system-wide and confirm `rg --version` works in the same terminal before starting OpenClaude.
 
+The package installs both `openclaude` and `codex3d` terminal commands.
+
 ### Start
 
 ```bash
 openclaude
+```
+
+Or:
+
+```bash
+codex3d
+```
+
+If you are running from a local clone instead of a global install, use:
+
+```bash
+npm exec codex3d
+```
+
+`npm exec codex3d` exposes the local package binary only for that one command. It does not add `codex3d` to your shell `PATH`.
+
+To make `codex3d` available as a normal command while developing from this repo, run:
+
+```bash
+npm link
+```
+
+Then open a new terminal and run:
+
+```bash
+codex3d
 ```
 
 Inside OpenClaude:

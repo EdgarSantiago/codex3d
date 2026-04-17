@@ -26,6 +26,22 @@ function boostChalkLevelForXtermJs(): boolean {
 }
 
 /**
+ * Windows Terminal supports truecolor, but some environments still surface a
+ * reduced chalk level. When that happens, rgb() theme colors get quantized
+ * into the active ANSI palette, which can make reds drift toward orange.
+ *
+ * Respect explicit no-color requests by only boosting when chalk already has a
+ * non-zero color level.
+ */
+function boostChalkLevelForWindowsTerminal(): boolean {
+  if (process.env.WT_SESSION && chalk.level > 0 && chalk.level < 3) {
+    chalk.level = 3
+    return true
+  }
+  return false
+}
+
+/**
  * tmux parses truecolor SGR (\e[48;2;r;g;bm) into its cell buffer correctly,
  * but its client-side emitter only re-emits truecolor to the outer terminal if
  * the outer terminal advertises Tc/RGB capability (via terminal-overrides).
@@ -59,6 +75,8 @@ function clampChalkLevelForTmux(): boolean {
 // Order matters: boost first so the tmux clamp can re-clamp if tmux is running
 // inside a VS Code terminal. Exported for debugging — tree-shaken if unused.
 export const CHALK_BOOSTED_FOR_XTERMJS = boostChalkLevelForXtermJs()
+export const CHALK_BOOSTED_FOR_WINDOWS_TERMINAL =
+  boostChalkLevelForWindowsTerminal()
 export const CHALK_CLAMPED_FOR_TMUX = clampChalkLevelForTmux()
 
 export type ColorType = 'foreground' | 'background'
