@@ -47,12 +47,18 @@ import {
   type AnthropicUsage,
   type ShimCreateParams,
 } from './codexShim.js'
+import { fetchWithProxyRetry } from './fetchWithProxyRetry.js'
 import {
   isLocalProviderUrl,
   resolveRuntimeCodexCredentials,
   resolveProviderRequest,
   getGithubEndpointType,
 } from './providerConfig.js'
+import {
+  buildOpenAICompatibilityErrorMessage,
+  classifyOpenAIHttpFailure,
+  classifyOpenAINetworkFailure,
+} from './openaiErrorClassification.js'
 import { sanitizeSchemaForOpenAICompat } from '../../utils/schemaSanitizer.js'
 import { redactSecretValueForDisplay } from '../../utils/providerProfile.js'
 import {
@@ -81,6 +87,19 @@ const COPILOT_HEADERS: Record<string, string> = {
   'Editor-Plugin-Version': 'copilot-chat/0.26.7',
   'Copilot-Integration-Id': 'vscode-chat',
 }
+
+const SENSITIVE_URL_QUERY_PARAM_NAMES = [
+  'api_key',
+  'key',
+  'token',
+  'access_token',
+  'refresh_token',
+  'signature',
+  'sig',
+  'secret',
+  'password',
+  'authorization',
+]
 
 function isGithubModelsMode(): boolean {
   return isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB)
@@ -129,6 +148,34 @@ function hasGeminiApiHost(baseUrl: string | undefined): boolean {
 function formatRetryAfterHint(response: Response): string {
   const ra = response.headers.get('retry-after')
   return ra ? ` (Retry-After: ${ra})` : ''
+}
+
+function shouldRedactUrlQueryParam(name: string): boolean {
+  const lower = name.toLowerCase()
+  return SENSITIVE_URL_QUERY_PARAM_NAMES.some(token => lower.includes(token))
+}
+
+function redactUrlForDiagnostics(url: string): string {
+  try {
+    const parsed = new URL(url)
+    if (parsed.username) {
+      parsed.username = 'redacted'
+    }
+    if (parsed.password) {
+      parsed.password = 'redacted'
+    }
+
+    for (const key of parsed.searchParams.keys()) {
+      if (shouldRedactUrlQueryParam(key)) {
+        parsed.searchParams.set(key, 'redacted')
+      }
+    }
+
+    const serialized = parsed.toString()
+    return redactSecretValueForDisplay(serialized, process.env as SecretValueSource) ?? serialized
+  } catch {
+    return redactSecretValueForDisplay(url, process.env as SecretValueSource) ?? url
+  }
 }
 
 function sleepMs(ms: number): Promise<void> {
@@ -302,6 +349,7 @@ function convertMessages(
   system: unknown,
 ): OpenAIMessage[] {
   const result: OpenAIMessage[] = []
+  const knownToolCallIds = new Set<string>()
 
   // System message first
   const sysText = convertSystemPrompt(system)
@@ -321,13 +369,21 @@ function convertMessages(
         const toolResults = content.filter((b: { type?: string }) => b.type === 'tool_result')
         const otherContent = content.filter((b: { type?: string }) => b.type !== 'tool_result')
 
-        // Emit tool results as tool messages
+        // Emit tool results as tool messages, but ONLY if we have a matching tool_use ID.
+        // Mistral/OpenAI strictly require tool messages to follow an assistant message with tool_calls.
+        // If the user interrupted (ESC) and a synthetic tool_result was generated without a recorded tool_use,
+        // emitting it here would cause a "role must alternate" or "unexpected role" error.
         for (const tr of toolResults) {
-          result.push({
-            role: 'tool',
-            tool_call_id: tr.tool_use_id ?? 'unknown',
-            content: convertToolResultContent(tr.content, tr.is_error),
-          })
+          const id = tr.tool_use_id ?? 'unknown'
+          if (knownToolCallIds.has(id)) {
+            result.push({
+              role: 'tool',
+              tool_call_id: id,
+              content: convertToolResultContent(tr.content, tr.is_error),
+            })
+          } else {
+            logForDebugging(`Dropping orphan tool_result for ID: ${id} to prevent API error`)
+          }
         }
 
         // Emit remaining user content
@@ -368,9 +424,11 @@ function convertMessages(
               input?: unknown
               extra_content?: Record<string, unknown>
               signature?: string
-            }, index) => {
+            }) => {
+              const id = tu.id ?? `call_${crypto.randomUUID().replace(/-/g, '')}`
+              knownToolCallIds.add(id)
               const toolCall: NonNullable<OpenAIMessage['tool_calls']>[number] = {
-                id: tu.id ?? `call_${crypto.randomUUID().replace(/-/g, '')}`,
+                id,
                 type: 'function' as const,
                 function: {
                   name: tu.name ?? 'unknown',
@@ -395,7 +453,6 @@ function convertMessages(
 
                 // Merge into existing google-specific metadata if present
                 const existingGoogle = (toolCall.extra_content?.google as Record<string, unknown>) ?? {}
-
                 toolCall.extra_content = {
                   ...toolCall.extra_content,
                   google: {
@@ -1429,12 +1486,97 @@ class OpenAIShimMessages {
     }
 
     const maxAttempts = isGithub ? GITHUB_429_MAX_RETRIES : 1
+
+    const throwClassifiedTransportError = (
+      error: unknown,
+      requestUrl: string,
+    ): never => {
+      if (options?.signal?.aborted) {
+        throw error
+      }
+
+      const failure = classifyOpenAINetworkFailure(error, {
+        url: requestUrl,
+      })
+      const redactedUrl = redactUrlForDiagnostics(requestUrl)
+      const safeMessage =
+        redactSecretValueForDisplay(
+          failure.message,
+          process.env as SecretValueSource,
+        ) || 'Request failed'
+
+      logForDebugging(
+        `[OpenAIShim] transport failure category=${failure.category} retryable=${failure.retryable} code=${failure.code ?? 'unknown'} method=POST url=${redactedUrl} model=${request.resolvedModel} message=${safeMessage}`,
+        { level: 'warn' },
+      )
+
+      throw APIError.generate(
+        503,
+        undefined,
+        buildOpenAICompatibilityErrorMessage(
+          `OpenAI API transport error: ${safeMessage}${failure.code ? ` (code=${failure.code})` : ''}`,
+          failure,
+        ),
+        new Headers(),
+      )
+    }
+
+    const throwClassifiedHttpError = (
+      status: number,
+      errorBody: string,
+      parsedBody: object | undefined,
+      responseHeaders: Headers,
+      requestUrl: string,
+      rateHint = '',
+    ): never => {
+      const failure = classifyOpenAIHttpFailure({
+        status,
+        body: errorBody,
+      })
+      const redactedUrl = redactUrlForDiagnostics(requestUrl)
+
+      logForDebugging(
+        `[OpenAIShim] request failed category=${failure.category} retryable=${failure.retryable} status=${status} method=POST url=${redactedUrl} model=${request.resolvedModel}`,
+        { level: 'warn' },
+      )
+
+      throw APIError.generate(
+        status,
+        parsedBody,
+        buildOpenAICompatibilityErrorMessage(
+          `OpenAI API error ${status}: ${errorBody}${rateHint}`,
+          failure,
+        ),
+        responseHeaders,
+      )
+    }
+
     let response: Response | undefined
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      response = await fetch(chatCompletionsUrl, fetchInit)
+      try {
+        response = await fetchWithProxyRetry(chatCompletionsUrl, fetchInit)
+      } catch (error) {
+        const isAbortError =
+          fetchInit.signal?.aborted === true ||
+          (typeof DOMException !== 'undefined' &&
+            error instanceof DOMException &&
+            error.name === 'AbortError') ||
+          (typeof error === 'object' &&
+            error !== null &&
+            'name' in error &&
+            error.name === 'AbortError')
+
+        if (isAbortError) {
+          throw error
+        }
+
+        throwClassifiedTransportError(error, chatCompletionsUrl)
+      }
+
       if (response.ok) {
         return response
       }
+
       if (
         isGithub &&
         response.status === 429 &&
@@ -1504,34 +1646,43 @@ class OpenAIShimMessages {
             }
           }
 
-          const responsesResponse = await fetch(responsesUrl, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(responsesBody),
-            signal: options?.signal,
-          })
+          let responsesResponse: Response
+          try {
+            responsesResponse = await fetchWithProxyRetry(responsesUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(responsesBody),
+              signal: options?.signal,
+            })
+          } catch (error) {
+            throwClassifiedTransportError(error, responsesUrl)
+          }
+          
           if (responsesResponse.ok) {
             return responsesResponse
           }
           const responsesErrorBody = await responsesResponse.text().catch(() => 'unknown error')
           let responsesErrorResponse: object | undefined
           try { responsesErrorResponse = JSON.parse(responsesErrorBody) } catch { /* raw text */ }
-          throw APIError.generate(
+          throwClassifiedHttpError(
             responsesResponse.status,
+            responsesErrorBody,
             responsesErrorResponse,
-            `OpenAI API error ${responsesResponse.status}: ${responsesErrorBody}`,
             responsesResponse.headers,
+            responsesUrl,
           )
         }
       }
 
       let errorResponse: object | undefined
       try { errorResponse = JSON.parse(errorBody) } catch { /* raw text */ }
-      throw APIError.generate(
+      throwClassifiedHttpError(
         response.status,
+        errorBody,
         errorResponse,
-        `OpenAI API error ${response.status}: ${errorBody}${rateHint}`,
         response.headers as unknown as Headers,
+        chatCompletionsUrl,
+        rateHint,
       )
     }
 

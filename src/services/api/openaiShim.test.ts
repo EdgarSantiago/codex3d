@@ -2775,3 +2775,172 @@ test('streaming: strips leaked reasoning preamble when split across multiple con
 
   expect(textDeltas).toEqual(['Hey! How can I help you today?'])
 })
+
+test('classifies localhost transport failures with actionable category marker', async () => {
+  process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
+
+  const transportError = Object.assign(new TypeError('fetch failed'), {
+    code: 'ECONNREFUSED',
+  })
+
+  globalThis.fetch = (async () => {
+    throw transportError
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await expect(
+    client.beta.messages.create({
+      model: 'qwen2.5-coder:7b',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    }),
+  ).rejects.toThrow('openai_category=connection_refused')
+
+  await expect(
+    client.beta.messages.create({
+      model: 'qwen2.5-coder:7b',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    }),
+  ).rejects.toThrow('local server is running')
+})
+
+test('propagates AbortError without wrapping it as transport failure', async () => {
+  process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
+
+  const abortError = new DOMException('The operation was aborted.', 'AbortError')
+  globalThis.fetch = (async () => {
+    throw abortError
+  }) as FetchType
+
+  const controller = new AbortController()
+  controller.abort()
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await expect(
+    client.beta.messages.create(
+      {
+        model: 'qwen2.5-coder:7b',
+        messages: [{ role: 'user', content: 'hello' }],
+        max_tokens: 64,
+        stream: false,
+      },
+      { signal: controller.signal },
+    ),
+  ).rejects.toBe(abortError)
+})
+
+test('classifies chat-completions endpoint 404 failures with endpoint_not_found marker', async () => {
+  process.env.OPENAI_BASE_URL = 'http://localhost:11434'
+
+  globalThis.fetch = (async () =>
+    new Response('Not Found', {
+      status: 404,
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    })) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await expect(
+    client.beta.messages.create({
+      model: 'qwen2.5-coder:7b',
+      messages: [{ role: 'user', content: 'hello' }],
+      max_tokens: 64,
+      stream: false,
+    }),
+  ).rejects.toThrow('openai_category=endpoint_not_found')
+})
+
+test('preserves valid tool_result and drops orphan tool_result', async () => {
+  let requestBody: Record<string, unknown> | undefined
+
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body))
+
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-1',
+        model: 'mistral-large-latest',
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'done',
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: {
+          prompt_tokens: 12,
+          completion_tokens: 4,
+          total_tokens: 16,
+        },
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+  await client.beta.messages.create({
+    model: 'mistral-large-latest',
+    system: 'test system',
+    messages: [
+      { role: 'user', content: 'Search and then I will interrupt' },
+      {
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'valid_call_1',
+            name: 'Search',
+            input: { query: 'openclaude' },
+          },
+        ],
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'valid_call_1',
+            content: 'Found it!',
+          },
+          {
+            type: 'tool_result',
+            tool_use_id: 'orphan_call_2',
+            content: 'Interrupted result',
+          },
+          {
+            role: 'user',
+            content: 'What happened?',
+          }
+        ],
+      },
+    ],
+    max_tokens: 64,
+    stream: false,
+  })
+
+  const messages = requestBody?.messages as Array<Record<string, unknown>>
+  
+  // Should have: system, user, assistant (tool_use), tool (valid_call_1), user
+  // Should NOT have: tool (orphan_call_2)
+  
+  const toolMessages = messages.filter(m => m.role === 'tool')
+  expect(toolMessages.length).toBe(1)
+  expect(toolMessages[0].tool_call_id).toBe('valid_call_1')
+  
+  const orphanMessage = toolMessages.find(m => m.tool_call_id === 'orphan_call_2')
+  expect(orphanMessage).toBeUndefined()
+})
