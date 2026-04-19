@@ -4,9 +4,12 @@ import {
   formatBuddyMode,
   getBuddyMode,
   getBuddyModeDescription,
+  RARITY_COLORS,
+  RARITY_STARS,
   type BuddyMode,
 } from '../../buddy/types.js'
 import { Box, Text } from '../../ink.js'
+import type { Theme } from '../../utils/theme.js'
 import { getGlobalConfig } from '../../utils/config.js'
 import {
   Select,
@@ -34,6 +37,29 @@ type BuddyMenuValue =
   | 'submit-personality'
   | BuddyMode
 
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+function rarityColor(rarity: keyof typeof RARITY_COLORS): keyof Theme {
+  return RARITY_COLORS[rarity]
+}
+
+function SummaryRow({
+  label,
+  value,
+}: {
+  label: string
+  value: React.ReactNode
+}): React.ReactNode {
+  return (
+    <Box>
+      <Text dimColor>{label}</Text>
+      <Text> {value}</Text>
+    </Box>
+  )
+}
+
 export function BuddyMenuDialog({
   onDone,
   onSubmitCommand,
@@ -48,6 +74,36 @@ export function BuddyMenuDialog({
   if (!companion || config.companionMuted) {
     return null
   }
+
+  const summaryHeader = (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text bold color={rarityColor(companion.rarity)}>
+        {companion.name} the {titleCase(companion.rarity)} {titleCase(companion.species)}{' '}
+        <Text color={rarityColor(companion.rarity)}>{RARITY_STARS[companion.rarity]}</Text>
+      </Text>
+      <Text dimColor italic wrap="wrap">
+        {companion.personality}
+      </Text>
+      <Box marginTop={1}>
+        <Text>
+          Level {companion.level} · {companion.progress.xpTotal} XP · Mood:{' '}
+          <Text color={rarityColor(companion.rarity)}>{titleCase(companion.mood)}</Text>
+        </Text>
+      </Box>
+    </Box>
+  )
+
+  const summaryPanel = (
+    <Box flexDirection="column" marginBottom={1} paddingX={1}>
+      {summaryHeader}
+      <SummaryRow
+        label="Species:"
+        value={<Text color={rarityColor(companion.rarity)}>{titleCase(companion.species)}</Text>}
+      />
+      <SummaryRow label="Prompt turns:" value={companion.progress.promptTurns} />
+      <SummaryRow label="Mode:" value={formatBuddyMode(currentMode)} />
+    </Box>
+  )
 
   function submit(command: string): void {
     onDone()
@@ -114,15 +170,16 @@ export function BuddyMenuDialog({
   }
 
   let title = 'Buddy'
-  let subtitle: React.ReactNode = `${companion.name} the ${companion.species}`
+  let subtitle: React.ReactNode = `${companion.name} companion panel`
   let options: OptionWithDescription<BuddyMenuValue>[]
   let onChange: (value: BuddyMenuValue) => void
   let onCancel = onDone
+  let summary = summaryPanel
 
   switch (view) {
     case 'mode':
       title = 'Buddy mode'
-      subtitle = `${formatBuddyMode(currentMode)} is active.`
+      subtitle = 'Choose how chatty and token-heavy your buddy should be.'
       options = ([
         'minimal',
         'balanced',
@@ -135,13 +192,20 @@ export function BuddyMenuDialog({
       options.push({
         label: 'Back',
         value: 'back',
+        description: 'Return to the main buddy actions.',
       })
       onChange = handleMode
       onCancel = () => setView('actions')
       break
     case 'rename':
       title = 'Rename buddy'
-      subtitle = <Text dimColor>Current name: {companion.name}</Text>
+      subtitle = 'Give your companion a new call sign.'
+      summary = (
+        <Box flexDirection="column" marginBottom={1} paddingX={1}>
+          {summaryHeader}
+          <SummaryRow label="Current name:" value={companion.name} />
+        </Box>
+      )
       options = [
         {
           label: 'New name',
@@ -156,6 +220,7 @@ export function BuddyMenuDialog({
         {
           label: 'Back',
           value: 'back',
+          description: 'Return to the main buddy actions.',
         },
       ]
       onChange = handleRename
@@ -163,7 +228,13 @@ export function BuddyMenuDialog({
       break
     case 'personality':
       title = 'Edit personality'
-      subtitle = <Text dimColor>{companion.personality}</Text>
+      subtitle = 'Tune how your buddy presents itself in the terminal.'
+      summary = (
+        <Box flexDirection="column" marginBottom={1} paddingX={1}>
+          {summaryHeader}
+          <SummaryRow label="Current personality:" value={<Text wrap="wrap">{companion.personality}</Text>} />
+        </Box>
+      )
       options = [
         {
           label: 'New personality',
@@ -178,6 +249,7 @@ export function BuddyMenuDialog({
         {
           label: 'Back',
           value: 'back',
+          description: 'Return to the main buddy actions.',
         },
       ]
       onChange = handlePersonality
@@ -189,37 +261,37 @@ export function BuddyMenuDialog({
         {
           label: 'Pet',
           value: 'pet',
-          description: 'Give your buddy a quick reaction.',
+          description: 'Trigger a quick companion reaction without leaving the prompt.',
         },
         {
           label: 'Status',
           value: 'status',
-          description: 'Show mood, level, XP, and mode.',
+          description: 'Print the full buddy status readout into the transcript.',
         },
         {
           label: 'Mode',
           value: 'mode',
-          description: `${formatBuddyMode(currentMode)} is active.`,
+          description: `${formatBuddyMode(currentMode)} is active right now.`,
         },
         {
           label: 'Rename',
           value: 'rename',
-          description: 'Choose a new buddy name.',
+          description: 'Update your buddy name from inside the menu.',
         },
         {
           label: 'Edit personality',
           value: 'personality',
-          description: 'Rewrite how your buddy describes itself.',
+          description: 'Refine the tone and flavor text your buddy uses.',
         },
         {
           label: 'Reroll',
           value: 'reroll',
-          description: 'Hatch a brand new buddy.',
+          description: 'Hatch a fresh buddy with a new look and identity.',
         },
         {
           label: 'Mute',
           value: 'mute',
-          description: 'Hide buddy reactions until /buddy unmute.',
+          description: 'Hide buddy reactions until you explicitly unmute them.',
         },
       ]
       onChange = handleActions
@@ -230,15 +302,26 @@ export function BuddyMenuDialog({
     <PermissionDialog
       title={title}
       subtitle={subtitle}
-      titleRight={<Text dimColor>Mode: {formatBuddyMode(currentMode)}</Text>}
+      innerPaddingX={0}
+      titleRight={
+        <Text color={rarityColor(companion.rarity)}>
+          {formatBuddyMode(currentMode)} · {RARITY_STARS[companion.rarity]}
+        </Text>
+      }
     >
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Select
-          options={options}
-          onChange={onChange}
-          onCancel={onCancel}
-          layout="compact-vertical"
-        />
+      <Box flexDirection="column" paddingY={1}>
+        {summary}
+        <Box marginTop={1} paddingX={2}>
+          <Text dimColor>Actions</Text>
+        </Box>
+        <Box paddingX={2} paddingBottom={1}>
+          <Select
+            options={options}
+            onChange={onChange}
+            onCancel={onCancel}
+            layout="compact-vertical"
+          />
+        </Box>
       </Box>
     </PermissionDialog>
   )

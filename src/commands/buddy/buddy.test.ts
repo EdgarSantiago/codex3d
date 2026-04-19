@@ -119,12 +119,17 @@ test('hatch and status use the same reconstructed buddy', async () => {
   const second = createOnDoneSpy()
   await buddyModule.call(second.onDone, createContext(), 'status')
 
-  expect(second.calls[0]?.result).toContain('Rare owl')
+  expect(second.calls[0]?.result).toContain('Rare Owl')
+  expect(second.calls[0]?.result).toContain('★★★')
   expect(second.calls[0]?.result).toContain(mockConfig.companion?.name ?? '')
   expect(second.calls[0]?.result).toContain('Level 1')
   expect(second.calls[0]?.result).toContain('0 XP')
-  expect(second.calls[0]?.result).toContain('Prompt turns: 0')
-  expect(second.calls[0]?.result).toContain('Mode: Balanced')
+  expect(second.calls[0]?.result).toContain('Mood … Lonely · Mode Balanced')
+  expect(second.calls[0]?.result).toContain('Prompt turns 0')
+  expect(second.calls[0]?.result).toContain('0/20 XP · 20 to next')
+  expect(second.calls[0]?.result).toContain('DEBUGGING 50')
+  expect(second.calls[0]?.result).toContain('SNARK 10')
+  expect(second.calls[0]?.result).toContain(mockConfig.companion?.personality ?? '')
 })
 
 test('mode command updates buddy mode', async () => {

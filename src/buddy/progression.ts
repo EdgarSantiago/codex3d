@@ -50,17 +50,49 @@ export function getBuddyProgress(
 }
 
 export function getBuddyLevel(xpTotal: number): number {
+  return getBuddyLevelProgress(xpTotal).level
+}
+
+export function getBuddyLevelProgress(xpTotal: number): {
+  level: number
+  currentLevelStartXp: number
+  nextLevelXp: number
+  xpIntoLevel: number
+  xpNeededThisLevel: number
+  xpRemaining: number
+} {
   let level = 1
-  let threshold = 20
+  let currentLevelStartXp = 0
+  let nextLevelXp = 20
   let increment = 30
 
-  while (xpTotal >= threshold) {
+  while (xpTotal >= nextLevelXp) {
     level += 1
-    threshold += increment
+    currentLevelStartXp = nextLevelXp
+    nextLevelXp += increment
     increment += 10
   }
 
-  return level
+  return {
+    level,
+    currentLevelStartXp,
+    nextLevelXp,
+    xpIntoLevel: xpTotal - currentLevelStartXp,
+    xpNeededThisLevel: nextLevelXp - currentLevelStartXp,
+    xpRemaining: nextLevelXp - xpTotal,
+  }
+}
+
+export function getBuddyLevelProgressBar(
+  xpTotal: number,
+  width = 16,
+): string {
+  const progress = getBuddyLevelProgress(xpTotal)
+  const ratio = progress.xpNeededThisLevel === 0
+    ? 1
+    : progress.xpIntoLevel / progress.xpNeededThisLevel
+  const filled = Math.max(0, Math.min(width, Math.round(ratio * width)))
+  return `${'█'.repeat(filled)}${'░'.repeat(Math.max(0, width - filled))}`
 }
 
 export function getBuddyMood(
@@ -91,6 +123,31 @@ export function getBuddyMood(
   }
 
   return 'lonely'
+}
+
+export function getBuddyMoodIcon(mood: CompanionMood): string {
+  switch (mood) {
+    case 'excited':
+      return '✦'
+    case 'content':
+      return '•'
+    case 'sleepy':
+      return 'zZ'
+    case 'lonely':
+      return '…'
+    default: {
+      const _exhaustive: never = mood
+      return _exhaustive
+    }
+  }
+}
+
+export function getBuddyMoodLabel(mood: CompanionMood): string {
+  return mood.charAt(0).toUpperCase() + mood.slice(1)
+}
+
+export function getBuddyMoodDisplay(mood: CompanionMood): string {
+  return `${getBuddyMoodIcon(mood)} ${getBuddyMoodLabel(mood)}`
 }
 
 export function applyBuddyProgressEvent(

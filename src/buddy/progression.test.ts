@@ -4,6 +4,7 @@ import {
   applyBuddyProgressEvent,
   createDefaultBuddyProgress,
   getBuddyLevel,
+  getBuddyLevelProgress,
   getBuddyMood,
   getBuddyProgress,
 } from './progression.js'
@@ -95,6 +96,26 @@ test('getBuddyLevel uses the staged XP curve', () => {
   expect(getBuddyLevel(49)).toBe(2)
   expect(getBuddyLevel(50)).toBe(3)
   expect(getBuddyLevel(90)).toBe(4)
+})
+
+test('getBuddyLevelProgress reports the current level segment', () => {
+  expect(getBuddyLevelProgress(0)).toEqual({
+    level: 1,
+    currentLevelStartXp: 0,
+    nextLevelXp: 20,
+    xpIntoLevel: 0,
+    xpNeededThisLevel: 20,
+    xpRemaining: 20,
+  })
+
+  expect(getBuddyLevelProgress(49)).toEqual({
+    level: 2,
+    currentLevelStartXp: 20,
+    nextLevelXp: 50,
+    xpIntoLevel: 29,
+    xpNeededThisLevel: 30,
+    xpRemaining: 1,
+  })
 })
 
 test('getBuddyMood derives simple states from recent prompt activity', () => {

@@ -10,24 +10,21 @@ import type { BuddyMode, Companion, StoredCompanion } from '../../buddy/types.js
 import {
   formatBuddyMode,
   getBuddyMode,
-  getBuddyModeHelp,
-  getBuddyModeStatus,
-  normalizeBuddyMode,
-} from '../../buddy/types.js'
-import {
-  applyBuddyProgressEvent,
-  createDefaultBuddyProgress,
-  getBuddyProgress,
-} from '../../buddy/progression.js'
-import {
-  formatBuddyMode,
-  getBuddyMode,
   getBuddyModeChoiceText,
   getBuddyModeDescription,
   getBuddyModeHelp,
   getBuddyModeStatus,
   normalizeBuddyMode,
+  RARITY_STARS,
 } from '../../buddy/types.js'
+import {
+  applyBuddyProgressEvent,
+  createDefaultBuddyProgress,
+  getBuddyLevelProgress,
+  getBuddyLevelProgressBar,
+  getBuddyMoodDisplay,
+  getBuddyProgress,
+} from '../../buddy/progression.js'
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
 
 const NAME_PREFIXES = [
@@ -254,12 +251,29 @@ function showUnknownSubcommand(
 
 function formatStatus(companion: Companion): string {
   const mode = getBuddyMode(getGlobalConfig())
-  return [
-    `${companion.name} is your ${titleCase(companion.rarity)} ${companion.species}. ${companion.personality}`,
-    `Level ${companion.level} · ${companion.progress.xpTotal} XP · Mood: ${titleCase(companion.mood)}`,
-    `Prompt turns: ${companion.progress.promptTurns}`,
-    `Mode: ${formatBuddyMode(mode)}`,
-  ].join('\n')
+  const progress = getBuddyLevelProgress(companion.progress.xpTotal)
+  const stats = Object.entries(companion.stats)
+    .map(([name, value]) => `${name} ${value}`)
+    .join(' · ')
+
+  const lines = [
+    `${companion.name} · ${RARITY_STARS[companion.rarity]} ${titleCase(companion.rarity)} ${titleCase(companion.species)}`,
+    companion.personality,
+    '─'.repeat(44),
+    `Level ${companion.level} · ${companion.progress.xpTotal} XP`,
+    `Mood ${getBuddyMoodDisplay(companion.mood)} · Mode ${formatBuddyMode(mode)}`,
+    `${getBuddyLevelProgressBar(companion.progress.xpTotal)} ${progress.xpIntoLevel}/${progress.xpNeededThisLevel} XP · ${progress.xpRemaining} to next`,
+    `Prompt turns ${companion.progress.promptTurns}`,
+    '─'.repeat(44),
+    stats,
+  ]
+
+  const width = lines.reduce((max, line) => Math.max(max, line.length), 0)
+  const top = `┌${'─'.repeat(width + 2)}┐`
+  const middle = lines.map(line => `│ ${line.padEnd(width)} │`)
+  const bottom = `└${'─'.repeat(width + 2)}┘`
+
+  return [top, ...middle, bottom].join('\n')
 }
 
 function normalizeText(raw: string): string {
