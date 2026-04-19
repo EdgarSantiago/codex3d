@@ -150,6 +150,46 @@ export function getBuddyMoodDisplay(mood: CompanionMood): string {
   return `${getBuddyMoodIcon(mood)} ${getBuddyMoodLabel(mood)}`
 }
 
+export function getBuddyMoodMeter(progress: BuddyProgress, now = Date.now()): {
+  value: number
+  max: number
+  filled: number
+  bar: string
+} {
+  const recentTurns = progress.recentPromptTurnAts.filter(
+    ts => now - ts <= DAY_MS,
+  )
+  const lastPromptAt = progress.lastPromptAt
+
+  let value = 0
+  if (recentTurns.length >= 5) {
+    value = 4
+  } else if (lastPromptAt === undefined) {
+    value = 0
+  } else {
+    const age = now - lastPromptAt
+    if (age <= 3 * DAY_MS) {
+      value = recentTurns.length >= 2 ? 3 : 2
+    } else if (age <= 7 * DAY_MS) {
+      value = 1
+    }
+  }
+
+  const max = 4
+  const filled = Math.max(0, Math.min(max, value))
+  return {
+    value,
+    max,
+    filled,
+    bar: `${'█'.repeat(filled)}${'░'.repeat(max - filled)}`,
+  }
+}
+
+export function getBuddyMoodBar(progress: BuddyProgress, now = Date.now()): string {
+  const meter = getBuddyMoodMeter(progress, now)
+  return `${meter.bar} ${meter.value}/${meter.max}`
+}
+
 export function applyBuddyProgressEvent(
   progress: BuddyProgress,
   event: BuddyProgressEvent,

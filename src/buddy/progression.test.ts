@@ -6,6 +6,7 @@ import {
   getBuddyLevel,
   getBuddyLevelProgress,
   getBuddyMood,
+  getBuddyMoodBar,
   getBuddyProgress,
 } from './progression.js'
 
@@ -116,6 +117,31 @@ test('getBuddyLevelProgress reports the current level segment', () => {
     xpNeededThisLevel: 30,
     xpRemaining: 1,
   })
+})
+
+test('getBuddyMoodBar reflects simple emotional progression', () => {
+  expect(
+    getBuddyMoodBar({
+      xpTotal: 0,
+      promptTurns: 0,
+      errorFeeds: 0,
+      recentPromptTurnAts: [],
+      recentErrorFeedKeys: [],
+      version: 1,
+    }),
+  ).toBe('░░░░ 0/4')
+
+  expect(
+    getBuddyMoodBar({
+      xpTotal: 20,
+      promptTurns: 2,
+      errorFeeds: 0,
+      lastPromptAt: Date.now() - 1000,
+      recentPromptTurnAts: [Date.now() - 2000, Date.now() - 1000],
+      recentErrorFeedKeys: [],
+      version: 1,
+    }),
+  ).toBe('███░ 3/4')
 })
 
 test('getBuddyMood derives simple states from recent prompt activity', () => {

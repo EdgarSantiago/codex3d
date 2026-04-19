@@ -2835,7 +2835,7 @@ export function REPL({
       onQueryEvent(event);
     }
     if (isBuddyEnabled()) {
-      void fireCompanionObserver(messagesRef.current, reaction => setAppState(prev => prev.companionReaction === reaction ? prev : {
+      void fireCompanionObserver(messagesRef.current, reaction => setAppState(prev => prev.companionReaction !== undefined || prev.companionReaction === reaction ? prev : {
         ...prev,
         companionReaction: reaction
       }));

@@ -22,6 +22,7 @@ import {
   createDefaultBuddyProgress,
   getBuddyLevelProgress,
   getBuddyLevelProgressBar,
+  getBuddyMoodBar,
   getBuddyMoodDisplay,
   getBuddyProgress,
 } from '../../buddy/progression.js'
@@ -196,30 +197,6 @@ function createErrorFeedMessage(name: string, toolName: string): string {
   return `${name} munches the ${toolName} error.`
 }
 
-export function awardBuddyPromptTurn(now = Date.now()): Companion | undefined {
-  const stored = getStoredCompanion()
-  if (!stored) {
-    return undefined
-  }
-
-  const nextProgress = applyBuddyProgressEvent(getBuddyProgress(stored), {
-    type: 'prompt_turn',
-    at: now,
-  })
-
-  const nextStored = {
-    ...stored,
-    progress: nextProgress,
-  }
-
-  saveGlobalConfig(current => ({
-    ...current,
-    companion: nextStored,
-  }))
-
-  return getCompanionFromStored(nextStored)
-}
-
 function renderHelp(): string {
   return `Usage: /buddy [status|mode <minimal|balanced|expressive>|rename <name>|edit personality <text>|reset|reroll|mute|unmute|help]
 
@@ -252,20 +229,26 @@ function showUnknownSubcommand(
 function formatStatus(companion: Companion): string {
   const mode = getBuddyMode(getGlobalConfig())
   const progress = getBuddyLevelProgress(companion.progress.xpTotal)
-  const stats = Object.entries(companion.stats)
-    .map(([name, value]) => `${name} ${value}`)
-    .join(' · ')
+  const statBar = (value: number, width = 10) => {
+    const filled = Math.max(0, Math.min(width, Math.round((value / 100) * width)))
+    return `${'█'.repeat(filled)}${'░'.repeat(width - filled)}`
+  }
+  const stats = Object.entries(companion.stats).map(
+    ([name, value]) => `${name.padEnd(10)} ${statBar(value)} ${value}`,
+  )
 
   const lines = [
     `${companion.name} · ${RARITY_STARS[companion.rarity]} ${titleCase(companion.rarity)} ${titleCase(companion.species)}`,
     companion.personality,
     '─'.repeat(44),
     `Level ${companion.level} · ${companion.progress.xpTotal} XP`,
-    `Mood ${getBuddyMoodDisplay(companion.mood)} · Mode ${formatBuddyMode(mode)}`,
+    `Mood ${getBuddyMoodDisplay(companion.mood)}`,
+    `Emotion ${getBuddyMoodBar(companion.progress)}`,
     `${getBuddyLevelProgressBar(companion.progress.xpTotal)} ${progress.xpIntoLevel}/${progress.xpNeededThisLevel} XP · ${progress.xpRemaining} to next`,
+    `Mode ${formatBuddyMode(mode)}`,
     `Prompt turns ${companion.progress.promptTurns}`,
     '─'.repeat(44),
-    stats,
+    ...stats,
   ]
 
   const width = lines.reduce((max, line) => Math.max(max, line.length), 0)
@@ -333,13 +316,18 @@ function saveBuddy(stored: StoredCompanion, unmute = false): Companion {
   })
 }
 
-export function awardBuddyPromptTurn(now = Date.now()): Companion | undefined {
+export function awardBuddyPromptTurn(
+  context: Pick<LocalJSXCommandContext, 'setAppState'>,
+  now = Date.now(),
+): Companion | undefined {
   const stored = getStoredCompanion()
   if (!stored) {
     return undefined
   }
 
-  const nextProgress = applyBuddyProgressEvent(getBuddyProgress(stored), {
+  const currentProgress = getBuddyProgress(stored)
+  const currentLevel = getBuddyLevelProgress(currentProgress.xpTotal).level
+  const nextProgress = applyBuddyProgressEvent(currentProgress, {
     type: 'prompt_turn',
     at: now,
   })
@@ -354,7 +342,20 @@ export function awardBuddyPromptTurn(now = Date.now()): Companion | undefined {
     companion: nextStored,
   }))
 
-  return getCompanionFromStored(nextStored)
+  const companion = getCompanionFromStored(nextStored)
+  const nextLevel = getBuddyLevelProgress(nextProgress.xpTotal).level
+  if (!getGlobalConfig().companionMuted) {
+    setCompanionReaction(
+      context,
+      nextLevel > currentLevel
+        ? `${companion.name} leveled up to ${nextLevel}!`
+        : `+10 XP`,
+      false,
+      'speak',
+    )
+  }
+
+  return companion
 }
 
 export async function call(

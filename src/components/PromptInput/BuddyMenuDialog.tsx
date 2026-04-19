@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { getCompanion } from '../../buddy/companion.js'
+import { getBuddyMoodBar } from '../../buddy/progression.js'
 import {
   formatBuddyMode,
   getBuddyMode,
@@ -90,6 +91,7 @@ export function BuddyMenuDialog({
           <Text color={rarityColor(companion.rarity)}>{titleCase(companion.mood)}</Text>
         </Text>
       </Box>
+      <Text dimColor>Emotion {getBuddyMoodBar(companion.progress)}</Text>
     </Box>
   )
 

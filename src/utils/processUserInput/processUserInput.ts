@@ -265,7 +265,7 @@ export async function processUserInput({
   queryCheckpoint('query_hooks_end')
 
   if (mode === 'prompt' && inputString !== null && !isMeta) {
-    awardBuddyPromptTurn()
+    awardBuddyPromptTurn(context)
   }
 
   // Happy path: onQuery will clear userInputOnProcessing via startTransition
