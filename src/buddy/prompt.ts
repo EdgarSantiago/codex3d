@@ -3,6 +3,7 @@ import type { Attachment } from '../utils/attachments.js'
 import { getGlobalConfig } from '../utils/config.js'
 import { getCompanion } from './companion.js'
 import { isBuddyEnabled } from './feature.js'
+import { isBuddyModelContextEnabled } from './types.js'
 
 export function companionIntroText(name: string, species: string): string {
   return `# Companion
@@ -16,8 +17,9 @@ export function getCompanionIntroAttachment(
   messages: Message[] | undefined,
 ): Attachment[] {
   if (!isBuddyEnabled()) return []
+  const config = getGlobalConfig()
   const companion = getCompanion()
-  if (!companion || getGlobalConfig().companionMuted) return []
+  if (!companion || config.companionMuted || !isBuddyModelContextEnabled(config)) return []
 
   // Skip if already announced for this companion.
   for (const msg of messages ?? []) {

@@ -278,9 +278,11 @@ export type GlobalConfig = {
     [tipId: string]: number // Key is tipId, value is the numStartups when tip was last shown
   }
 
-  // /buddy companion soul — bones regenerated from userId on read. See src/buddy/.
+  // /buddy companion soul — bones regenerated from stored seed when present,
+  // otherwise from the legacy userId-based roll. See src/buddy/.
   companion?: import('../buddy/types.js').StoredCompanion
   companionMuted?: boolean
+  companionMode?: import('../buddy/types.js').BuddyMode
 
   // Feedback survey tracking
   feedbackSurveyState?: {

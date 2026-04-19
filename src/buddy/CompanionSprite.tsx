@@ -12,6 +12,7 @@ import type { Theme } from '../utils/theme.js';
 import { getCompanion } from './companion.js';
 import { isBuddyEnabled } from './feature.js';
 import { renderFace, renderSprite, spriteFrameCount } from './sprites.js';
+import { decideCompanionVisualState } from './visualState.js';
 import { RARITY_COLORS } from './types.js';
 const TICK_MS = 500;
 const BUBBLE_SHOW = 20; // ticks → ~10s at 500ms
@@ -25,6 +26,7 @@ const IDLE_SEQUENCE = [0, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 2, 0, 0, 0];
 // Hearts float up-and-out over 5 ticks (~2.5s). Prepended above the sprite.
 const H = figures.heart;
 const PET_HEARTS = [`   ${H}    ${H}   `, `  ${H}  ${H}   ${H}  `, ` ${H}   ${H}  ${H}   `, `${H}  ${H}      ${H} `, '·    ·   ·  '];
+const ERROR_FEED_BURSTS = ['  ×  ×  ×   ', ' ×   !   ×  ', '×   ××   ×  ', ' ×   !   ×  ', '  ·  ·  ·   '];
 function wrap(text: string, width: number): string[] {
   const words = text.split(' ');
   const lines: string[] = [];
@@ -176,6 +178,7 @@ export function companionReservedColumns(terminalColumns: number, speaking: bool
 export function CompanionSprite(): React.ReactNode {
   const reaction = useAppState(s => s.companionReaction);
   const petAt = useAppState(s => s.companionPetAt);
+  const animation = useAppState(s => s.companionAnimation);
   const focused = useAppState(s => s.footerSelection === 'companion');
   const setAppState = useSetAppState();
   const {
@@ -221,15 +224,17 @@ export function CompanionSprite(): React.ReactNode {
   const fading = reaction !== undefined && bubbleAge >= BUBBLE_SHOW - FADE_WINDOW;
   const petAge = petAt ? tick - petStartTick : Infinity;
   const petting = petAge * TICK_MS < PET_BURST_MS;
+  const mood = companion.mood;
 
   // Narrow terminals: collapse to one-line face. When speaking, the quip
   // replaces the name beside the face (no room for a bubble).
   if (columns < MIN_COLS_FOR_FULL_SPRITE) {
     const quip = reaction && reaction.length > NARROW_QUIP_CAP ? reaction.slice(0, NARROW_QUIP_CAP - 1) + '…' : reaction;
     const label = quip ? `"${quip}"` : focused ? ` ${companion.name} ` : companion.name;
+    const narrowPrefix = animation?.kind === 'errorFeed' ? <Text color="warning">× </Text> : petting ? <Text color="autoAccept">{figures.heart} </Text> : null;
     return <Box paddingX={1} alignSelf="flex-end">
         <Text>
-          {petting && <Text color="autoAccept">{figures.heart} </Text>}
+          {narrowPrefix}
           <Text bold color={color}>
             {renderFace(companion)}
           </Text>{' '}
@@ -240,23 +245,20 @@ export function CompanionSprite(): React.ReactNode {
       </Box>;
   }
   const frameCount = spriteFrameCount(companion.species);
-  const heartFrame = petting ? PET_HEARTS[petAge % PET_HEARTS.length] : null;
-  let spriteFrame: number;
-  let blink = false;
-  if (reaction || petting) {
-    // Excited: cycle all fidget frames fast
-    spriteFrame = tick % frameCount;
-  } else {
-    const step = IDLE_SEQUENCE[tick % IDLE_SEQUENCE.length]!;
-    if (step === -1) {
-      spriteFrame = 0;
-      blink = true;
-    } else {
-      spriteFrame = step % frameCount;
-    }
-  }
+  const visualDecision = decideCompanionVisualState({
+    mood,
+    now: Date.now(),
+    tick,
+    frameCount,
+    reaction,
+    petAt,
+    animation,
+  });
+  const effectFrame = visualDecision.activeKind === 'pet' ? PET_HEARTS[petAge % PET_HEARTS.length] : visualDecision.activeKind === 'errorFeed' ? ERROR_FEED_BURSTS[tick % ERROR_FEED_BURSTS.length] : null;
+  const spriteFrame = visualDecision.spriteFrame;
+  const blink = visualDecision.blink;
   const body = renderSprite(companion, spriteFrame).map(line => blink ? line.replaceAll(companion.eye, '-') : line);
-  const sprite = heartFrame ? [heartFrame, ...body] : body;
+  const sprite = effectFrame ? [effectFrame, ...body] : body;
 
   // Name row doubles as hint row — unfocused shows dim name + ↓ discovery,
   // focused shows inverse name. The enter-to-open hint lives in
@@ -264,7 +266,7 @@ export function CompanionSprite(): React.ReactNode {
   // sprite doesn't jump up when selected. flexShrink=0 stops the
   // inline-bubble row wrapper from squeezing the sprite to fit.
   const spriteColumn = <Box flexDirection="column" flexShrink={0} alignItems="center" width={colWidth}>
-      {sprite.map((line, i) => <Text key={i} color={i === 0 && heartFrame ? 'autoAccept' : color}>
+      {sprite.map((line, i) => <Text key={i} color={i === 0 && visualDecision.activeKind === 'pet' ? 'autoAccept' : i === 0 && visualDecision.activeKind === 'errorFeed' ? 'warning' : color}>
           {line}
         </Text>)}
       <Text italic bold={focused} dimColor={!focused} color={focused ? color : undefined} inverse={focused}>

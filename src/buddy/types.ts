@@ -107,6 +107,223 @@ export type CompanionBones = {
   stats: Record<StatName, number>
 }
 
+export type CompanionMood = 'excited' | 'content' | 'sleepy' | 'lonely'
+export type BuddyMode = 'minimal' | 'balanced' | 'expressive'
+
+export const BUDDY_MODES = ['minimal', 'balanced', 'expressive'] as const
+
+export function isValidBuddyMode(value: string): value is BuddyMode {
+  return value === 'minimal' || value === 'balanced' || value === 'expressive'
+}
+
+export function normalizeBuddyMode(value: string | undefined): BuddyMode | undefined {
+  if (!value) return undefined
+  const normalized = value.trim().toLowerCase()
+  return isValidBuddyMode(normalized) ? normalized : undefined
+}
+
+export function getBuddyMode(config: { companionMode?: BuddyMode }): BuddyMode {
+  return config.companionMode ?? 'balanced'
+}
+
+export function formatBuddyMode(mode: BuddyMode): string {
+  return mode.charAt(0).toUpperCase() + mode.slice(1)
+}
+
+export function getBuddyModeDescription(mode: BuddyMode): string {
+  switch (mode) {
+    case 'minimal':
+      return 'Token-safe: disables buddy commentary and model-facing buddy context.'
+    case 'balanced':
+      return 'Keeps local buddy commentary, progression, and visuals enabled.'
+    case 'expressive':
+      return 'Enables buddy commentary plus model-facing buddy context.'
+    default: {
+      const _exhaustive: never = mode
+      return _exhaustive
+    }
+  }
+}
+
+export function isBuddyCommentaryEnabled(config: {
+  companionMode?: BuddyMode
+}): boolean {
+  return getBuddyMode(config) !== 'minimal'
+}
+
+export function isBuddyModelContextEnabled(config: {
+  companionMode?: BuddyMode
+}): boolean {
+  return getBuddyMode(config) === 'expressive'
+}
+
+export function getBuddyModeStatus(mode: BuddyMode): string {
+  return `${formatBuddyMode(mode)} — ${getBuddyModeDescription(mode)}`
+}
+
+export function getBuddyModeHelp(): string {
+  return 'Use /buddy mode <minimal|balanced|expressive> to control token-sensitive buddy behavior.'
+}
+
+export function getDefaultBuddyMode(): BuddyMode {
+  return 'balanced'
+}
+
+export function shouldBuddyStayTokenSafe(config: {
+  companionMode?: BuddyMode
+}): boolean {
+  return getBuddyMode(config) === 'minimal'
+}
+
+export function shouldBuddySpendExtraTokens(config: {
+  companionMode?: BuddyMode
+}): boolean {
+  return getBuddyMode(config) !== 'minimal'
+}
+
+export type BuddyModeRecord = {
+  companionMode?: BuddyMode
+}
+
+export type BuddyModeHelpersConfig = {
+  companionMode?: BuddyMode
+}
+
+export function parseBuddyModeArg(arg: string): BuddyMode | undefined {
+  return normalizeBuddyMode(arg)
+}
+
+export function getBuddyModeChoices(): readonly BuddyMode[] {
+  return BUDDY_MODES
+}
+
+export function getBuddyModeSummary(mode: BuddyMode): string {
+  return `${formatBuddyMode(mode)} · ${getBuddyModeDescription(mode)}`
+}
+
+export function getBuddyModeShortDescription(mode: BuddyMode): string {
+  switch (mode) {
+    case 'minimal':
+      return 'Token-safe'
+    case 'balanced':
+      return 'Light commentary'
+    case 'expressive':
+      return 'Full commentary'
+    default: {
+      const _exhaustive: never = mode
+      return _exhaustive
+    }
+  }
+}
+
+export function shouldBuddyUsePromptAttachment(config: {
+  companionMode?: BuddyMode
+}): boolean {
+  return isBuddyModelContextEnabled(config)
+}
+
+export function shouldBuddyUseObserverCommentary(config: {
+  companionMode?: BuddyMode
+}): boolean {
+  return isBuddyCommentaryEnabled(config)
+}
+
+export function getBuddyModeStatusText(mode: BuddyMode): string {
+  return `${formatBuddyMode(mode)} mode active.`
+}
+
+export function getBuddyModeHint(): string {
+  return 'Minimal keeps XP, mood, and animations while disabling token-sensitive commentary and prompt context.'
+}
+
+export function getBuddyModeRecommendation(): BuddyMode {
+  return 'balanced'
+}
+
+export function isBuddyExpressiveMode(config: {
+  companionMode?: BuddyMode
+}): boolean {
+  return getBuddyMode(config) === 'expressive'
+}
+
+export function isBuddyMinimalMode(config: {
+  companionMode?: BuddyMode
+}): boolean {
+  return getBuddyMode(config) === 'minimal'
+}
+
+export function isBuddyBalancedMode(config: {
+  companionMode?: BuddyMode
+}): boolean {
+  return getBuddyMode(config) === 'balanced'
+}
+
+export function getBuddyModeLine(mode: BuddyMode): string {
+  return `Mode: ${formatBuddyMode(mode)}`
+}
+
+export function getBuddyModeDefaultValue(): BuddyMode {
+  return 'balanced'
+}
+
+export function shouldBuddyUseAmbientReactions(config: {
+  companionMode?: BuddyMode
+}): boolean {
+  return isBuddyCommentaryEnabled(config)
+}
+
+export function shouldBuddyUsePromptContext(config: {
+  companionMode?: BuddyMode
+}): boolean {
+  return isBuddyModelContextEnabled(config)
+}
+
+export function getBuddyModeTokenSummary(config: {
+  companionMode?: BuddyMode
+}): string {
+  return shouldBuddyStayTokenSafe(config)
+    ? 'Token-safe mode active.'
+    : 'Buddy commentary may use additional tokens.'
+}
+
+export function getBuddyModeBanner(config: { companionMode?: BuddyMode }): string {
+  const mode = getBuddyMode(config)
+  return `${getBuddyModeSummary(mode)} · ${getBuddyModeTokenSummary(config)}`
+}
+
+export function getBuddyModeChoiceText(): string {
+  return 'minimal | balanced | expressive'
+}
+
+export function createBuddyModeCommandHelp(): string {
+  return 'Use /buddy mode <minimal|balanced|expressive> to choose token-safe or richer buddy behavior.'
+}
+
+export function createBuddyModeNote(): string {
+  return 'Minimal disables token-sensitive buddy commentary and model-facing buddy context while keeping local progression and visuals active.'
+}
+
+export type BuddyProgress = {
+  xpTotal: number
+  promptTurns: number
+  errorFeeds: number
+  lastPromptAt?: number
+  recentPromptTurnAts: number[]
+  recentErrorFeedKeys: string[]
+  version: number
+}
+
+export type BuddyProgressEvent =
+  | {
+      type: 'prompt_turn'
+      at: number
+    }
+  | {
+      type: 'tool_error'
+      at: number
+      feedKey: string
+    }
+
 // Model-generated soul — stored in config after first hatch
 export type CompanionSoul = {
   name: string
@@ -116,12 +333,20 @@ export type CompanionSoul = {
 export type Companion = CompanionBones &
   CompanionSoul & {
     hatchedAt: number
+    progress: BuddyProgress
+    level: number
+    mood: CompanionMood
   }
 
-// What actually persists in config. Bones are regenerated from hash(userId)
-// on every read so species renames don't break stored companions and users
-// can't edit their way to a legendary.
-export type StoredCompanion = CompanionSoul & { hatchedAt: number }
+// What actually persists in config. Bones are regenerated on every read,
+// usually from the stored seed and otherwise from the legacy user-based roll,
+// so species renames don't break stored companions and users can't edit their
+// way to a legendary.
+export type StoredCompanion = CompanionSoul & {
+  hatchedAt: number
+  seed?: string
+  progress?: BuddyProgress
+}
 
 export const RARITY_WEIGHTS = {
   common: 60,

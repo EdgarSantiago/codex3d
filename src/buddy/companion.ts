@@ -10,7 +10,13 @@ import {
   SPECIES,
   STAT_NAMES,
   type StatName,
+  type StoredCompanion,
 } from './types.js'
+import {
+  getBuddyLevel,
+  getBuddyMood,
+  getBuddyProgress,
+} from './progression.js'
 
 // Mulberry32 — tiny seeded PRNG, good enough for picking ducks
 function mulberry32(seed: number): () => number {
@@ -121,13 +127,25 @@ export function companionUserId(): string {
   return config.oauthAccount?.accountUuid ?? config.userID ?? 'anon'
 }
 
-// Regenerate bones from userId, merge with stored soul. Bones never persist
-// so species renames and SPECIES-array edits can't break stored companions,
-// and editing config.companion can't fake a rarity.
+// Regenerate bones from the stored seed when present, otherwise fall back to
+// the legacy userId-based roll. Bones never persist so species renames and
+// SPECIES-array edits can't break stored companions, and editing
+// config.companion can't fake a rarity.
+export function getCompanionFromStored(stored: StoredCompanion): Companion {
+  const { bones } = stored.seed ? rollWithSeed(stored.seed) : roll(companionUserId())
+  const progress = getBuddyProgress(stored)
+  // bones last so stale bones fields in old-format configs get overridden
+  return {
+    ...stored,
+    ...bones,
+    progress,
+    level: getBuddyLevel(progress.xpTotal),
+    mood: getBuddyMood(progress),
+  }
+}
+
 export function getCompanion(): Companion | undefined {
   const stored = getGlobalConfig().companion
   if (!stored) return undefined
-  const { bones } = roll(companionUserId())
-  // bones last so stale bones fields in old-format configs get overridden
-  return { ...stored, ...bones }
+  return getCompanionFromStored(stored)
 }

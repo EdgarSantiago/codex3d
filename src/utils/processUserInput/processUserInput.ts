@@ -59,6 +59,7 @@ import {
   replaceUltraplanKeyword,
 } from '../ultraplan/keyword.js'
 import { processTextPrompt } from './processTextPrompt.js'
+import { awardBuddyPromptTurn } from '../../commands/buddy/buddy.js'
 export type ProcessUserInputContext = ToolUseContext & LocalJSXCommandContext
 
 export type ProcessUserInputBaseResult = {
@@ -262,6 +263,10 @@ export async function processUserInput({
     }
   }
   queryCheckpoint('query_hooks_end')
+
+  if (mode === 'prompt' && inputString !== null && !isMeta) {
+    awardBuddyPromptTurn()
+  }
 
   // Happy path: onQuery will clear userInputOnProcessing via startTransition
   // so it resolves in the same frame as deferredMessages (no flicker gap).

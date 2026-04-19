@@ -78,6 +78,7 @@ import {
   createUserMessage,
   withMemoryCorrectionHint,
 } from '../../utils/messages.js'
+import { awardBuddyToolError } from '../../commands/buddy/buddy.js'
 import type {
   PermissionDecisionReason,
   PermissionResult,
@@ -1662,19 +1663,25 @@ async function checkPermissionsAndCallTool(
 
     if (!(error instanceof AbortError)) {
       const errorMsg = errorMessage(error)
+      const errorClass = classifyToolError(error)
       logForDebugging(
         `${tool.name} tool error (${durationMs}ms): ${errorMsg.slice(0, 200)}`,
       )
       if (!(error instanceof ShellError)) {
         logError(error)
       }
+      awardBuddyToolError(toolUseContext, {
+        chainId: toolUseContext.queryTracking?.chainId,
+        requestId,
+        toolName: tool.name,
+        errorClass,
+      })
       logEvent('tengu_tool_use_error', {
         messageID:
           messageId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         toolName: sanitizeToolNameForAnalytics(tool.name),
-        error: classifyToolError(
-          error,
-        ) as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
+        error:
+          errorClass as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         isMcp: tool.isMcp ?? false,
 
         queryChainId: toolUseContext.queryTracking
