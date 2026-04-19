@@ -97,6 +97,7 @@ import { findTokenBudgetPositions } from '../../utils/tokenBudget.js';
 import { findUltraplanTriggerPositions, findUltrareviewTriggerPositions } from '../../utils/ultraplan/keyword.js';
 import { AutoModeOptInDialog } from '../AutoModeOptInDialog.js';
 import { BridgeDialog } from '../BridgeDialog.js';
+import { BuddyMenuDialog } from './BuddyMenuDialog.js';
 import { ConfigurableShortcutHint } from '../ConfigurableShortcutHint.js';
 import { getVisibleAgentTasks, useCoordinatorTaskCount } from '../CoordinatorAgentStatus.js';
 import { getEffortNotificationText } from '../EffortIndicator.js';
@@ -383,8 +384,14 @@ function PromptInput({
   // printable, inputFilter prepends a space before it. Any other input
   // (arrow, escape, backspace, paste, space) disarms without inserting.
   const pendingSpaceAfterPillRef = useRef(false);
+  const [showBuddyMenu, setShowBuddyMenu] = useState(false);
   const [showTeamsDialog, setShowTeamsDialog] = useState(false);
   const [showBridgeDialog, setShowBridgeDialog] = useState(false);
+  useEffect(() => {
+    if (showBuddyMenu && !companionFooterVisible) {
+      setShowBuddyMenu(false);
+    }
+  }, [showBuddyMenu, companionFooterVisible]);
   const [teammateFooterIndex, setTeammateFooterIndex] = useState(0);
   // -1 sentinel: tasks pill is selected but no specific agent row is selected yet.
   // First ↓ selects the pill, second ↓ moves to row 0. Prevents double-select
@@ -1825,9 +1832,9 @@ function PromptInput({
       }
       switch (footerItemSelected) {
         case 'companion':
-          if (isBuddyEnabled()) {
+          if (isBuddyEnabled() && companionFooterVisible) {
             selectFooterItem(null);
-            void onSubmit('/buddy');
+            setShowBuddyMenu(true);
           }
           break;
         case 'tasks':
@@ -1905,7 +1912,7 @@ function PromptInput({
     // Skip all input handling when a full-screen dialog is open. These dialogs
     // render via early return, but hooks run unconditionally — so without this
     // guard, Escape inside a dialog leaks to the double-press message-selector.
-    if (showTeamsDialog || showQuickOpen || showGlobalSearch || showHistoryPicker) {
+    if (showBuddyMenu || showTeamsDialog || showQuickOpen || showGlobalSearch || showHistoryPicker) {
       return;
     }
 
@@ -2205,6 +2212,13 @@ function PromptInput({
     return <BridgeDialog onDone={() => {
       setShowBridgeDialog(false);
       selectFooterItem(null);
+    }} />;
+  }
+  if (showBuddyMenu) {
+    return <BuddyMenuDialog onDone={() => {
+      setShowBuddyMenu(false);
+    }} onSubmitCommand={command => {
+      void onSubmit(command, true);
     }} />;
   }
   const baseProps: BaseTextInputProps = {
