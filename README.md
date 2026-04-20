@@ -1,8 +1,10 @@
-# OpenClaude
+# Codex3D
 
-OpenClaude is an open-source coding-agent CLI for cloud and local model providers.
+Codex3D is this repository's customized CLI build, maintained as a clone and independent derivative of OpenClaude.
 
-Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, Atomic Chat, and other supported backends while keeping one terminal-first workflow: prompts, tools, agents, MCP, slash commands, and streaming output.
+It keeps the upstream OpenClaude coding-agent workflow while adapting the project for this repo's own direction: prompts, tools, agents, MCP, slash commands, streaming output, and support for cloud and local model providers.
+
+Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, Atomic Chat, and other supported backends from the same terminal-first workflow.
 
 [![PR Checks](https://github.com/Gitlawb/openclaude/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/Gitlawb/openclaude/actions/workflows/pr-checks.yml)
 [![Release](https://img.shields.io/github/v/tag/Gitlawb/openclaude?label=release&color=0ea5e9)](https://github.com/Gitlawb/openclaude/tags)
@@ -10,7 +12,7 @@ Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, A
 [![Security Policy](https://img.shields.io/badge/security-policy-0f766e)](SECURITY.md)
 [![License](https://img.shields.io/badge/license-MIT-2563eb)](LICENSE)
 
-OpenClaude is also mirrored to GitLawb:
+The upstream OpenClaude project is also mirrored to GitLawb:
 [gitlawb.com/node/repos/z6MkqDnb/openclaude](https://gitlawb.com/node/repos/z6MkqDnb/openclaude)
 
 [Quick Start](#quick-start) | [Setup Guides](#setup-guides) | [Providers](#supported-providers) | [Source Build](#source-build-and-local-development) | [VS Code Extension](#vs-code-extension) | [Community](#community)
@@ -19,13 +21,26 @@ OpenClaude is also mirrored to GitLawb:
 
 [![Star History Chart](https://api.star-history.com/chart?repos=gitlawb/openclaude&type=date&legend=top-left)](https://www.star-history.com/?repos=gitlawb%2Fopenclaude&type=date&legend=top-left)
 
-## Why OpenClaude
+## Why Codex3D
 
 - Use one CLI across cloud APIs and local model backends
 - Save provider profiles inside the app with `/provider`
 - Run with OpenAI-compatible services, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, Atomic Chat, and other supported providers
 - Keep coding-agent workflows in one place: bash, file tools, grep, glob, agents, tasks, MCP, and web tools
 - Use the bundled VS Code extension for launch integration and theme support
+
+## Relationship to Upstream
+
+Codex3D is maintained as a clone and independent derivative of OpenClaude.
+
+For most local clones and personal forks:
+
+- `origin` is your fork or the default remote for this Codex3D repository
+- `upstream` is the OpenClaude repository you fetch from when you want to bring in new upstream changes
+
+Codex3D is an independent community project and is not affiliated with, endorsed by, or sponsored by Anthropic.
+
+Codex3D comes from the OpenClaude codebase, and OpenClaude itself originated from the Claude Code codebase before being substantially modified for multiple providers and open use. "Claude" and "Claude Code" are trademarks of Anthropic PBC. See [LICENSE](LICENSE) for details.
 
 ## Quick Start
 
@@ -35,7 +50,7 @@ OpenClaude is also mirrored to GitLawb:
 npm install -g @gitlawb/openclaude
 ```
 
-If the install later reports `ripgrep not found`, install ripgrep system-wide and confirm `rg --version` works in the same terminal before starting OpenClaude.
+If the install later reports `ripgrep not found`, install ripgrep system-wide and confirm `rg --version` works in the same terminal before starting Codex3D.
 
 The package installs both `openclaude` and `codex3d` terminal commands.
 
@@ -71,7 +86,7 @@ Then open a new terminal and run:
 codex3d
 ```
 
-Inside OpenClaude:
+Inside Codex3D:
 
 - run `/provider` for guided provider setup and saved profiles
 - run `/onboard-github` for GitHub Models onboarding
@@ -151,7 +166,7 @@ Advanced and source-build guides:
 | Gemini | `/provider` or env vars | Supports API key, access token, or local ADC workflow on current `main` |
 | GitHub Models | `/onboard-github` | Interactive onboarding with saved credentials |
 | Codex OAuth | `/provider` | Opens ChatGPT sign-in in your browser and stores Codex credentials securely |
-| Codex | `/provider` | Uses existing Codex CLI auth, OpenClaude secure storage, or env credentials |
+| Codex | `/provider` | Uses existing Codex CLI auth, Codex3D secure storage, or env credentials |
 | Ollama | `/provider`, env vars, or `ollama launch` | Local inference with no API key |
 | Atomic Chat | advanced setup | Local Apple Silicon backend |
 | Bedrock / Vertex / Foundry | env vars | Additional provider integrations for supported environments |
@@ -167,18 +182,18 @@ Advanced and source-build guides:
 
 ## Provider Notes
 
-OpenClaude supports multiple providers, but behavior is not identical across all of them.
+Codex3D supports multiple providers, but behavior is not identical across all of them.
 
 - Anthropic-specific features may not exist on other providers
 - Tool quality depends heavily on the selected model
 - Smaller local models can struggle with long multi-step tool flows
-- Some providers impose lower output caps than the CLI defaults, and OpenClaude adapts where possible
+- Some providers impose lower output caps than the CLI defaults, and Codex3D adapts where possible
 
 For best results, use models with strong tool/function calling support.
 
 ## Agent Routing
 
-OpenClaude can route different agents to different models through settings-based routing. This is useful for cost optimization or splitting work by model strength.
+Codex3D can route different agents to different models through settings-based routing. This is useful for cost optimization or splitting work by model strength.
 
 Add to `~/.claude/settings.json`:
 
@@ -214,7 +229,7 @@ By default, `WebSearch` works on non-Anthropic models using DuckDuckGo. This giv
 
 > **Note:** DuckDuckGo fallback works by scraping search results and may be rate-limited, blocked, or subject to DuckDuckGo's Terms of Service. If you want a more reliable supported option, configure Firecrawl.
 
-For Anthropic-native backends and Codex responses, OpenClaude keeps the native provider web search behavior.
+For Anthropic-native backends and Codex responses, Codex3D keeps the native provider web search behavior.
 
 `WebFetch` works, but its basic HTTP plus HTML-to-markdown path can still fail on JavaScript-rendered sites or sites that block plain HTTP requests.
 
@@ -235,7 +250,7 @@ Free tier at [firecrawl.dev](https://firecrawl.dev) includes 500 credits. The ke
 
 ## Headless gRPC Server
 
-OpenClaude can be run as a headless gRPC service, allowing you to integrate its agentic capabilities (tools, bash, file editing) into other applications, CI/CD pipelines, or custom user interfaces. The server uses bidirectional streaming to send real-time text chunks, tool calls, and request permissions for sensitive commands.
+Codex3D can be run as a headless gRPC service, allowing you to integrate its agentic capabilities (tools, bash, file editing) into other applications, CI/CD pipelines, or custom user interfaces. The server uses bidirectional streaming to send real-time text chunks, tool calls, and request permissions for sensitive commands.
 
 ### 1. Start the gRPC Server
 
@@ -287,7 +302,7 @@ Helpful commands:
 
 ## Testing And Coverage
 
-OpenClaude uses Bun's built-in test runner for unit tests.
+Codex3D uses Bun's built-in test runner for unit tests.
 
 Run the full unit suite:
 
@@ -326,7 +341,7 @@ Recommended contributor validation before opening a PR:
 - `bun run test:coverage` for broader unit coverage when your change affects shared runtime or provider logic
 - focused `bun test ...` runs for the files and flows you changed
 
-Coverage output is written to `coverage/lcov.info`, and OpenClaude also generates a git-activity-style heatmap at `coverage/index.html`.
+Coverage output is written to `coverage/lcov.info`, and Codex3D also generates a git-activity-style heatmap at `coverage/index.html`.
 ## Repository Structure
 
 - `src/` - core CLI/runtime
@@ -364,9 +379,9 @@ For larger changes, open an issue first so the scope is clear before implementat
 
 ## Disclaimer
 
-OpenClaude is an independent community project and is not affiliated with, endorsed by, or sponsored by Anthropic.
+Codex3D is an independent community project and is not affiliated with, endorsed by, or sponsored by Anthropic.
 
-OpenClaude originated from the Claude Code codebase and has since been substantially modified to support multiple providers and open use. "Claude" and "Claude Code" are trademarks of Anthropic PBC. See [LICENSE](LICENSE) for details.
+Codex3D is maintained from an OpenClaude-derived codebase, and OpenClaude originated from the Claude Code codebase before being substantially modified to support multiple providers and open use. "Claude" and "Claude Code" are trademarks of Anthropic PBC. See [LICENSE](LICENSE) for details.
 
 ## License
 
