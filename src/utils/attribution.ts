@@ -1,7 +1,10 @@
 import { feature } from 'bun:bundle'
 import { stat } from 'fs/promises'
 import { getClientType } from '../bootstrap/state.js'
-import { getRemoteSessionUrl, isRemoteSessionLocal } from '../constants/product.js'
+import {
+  getRemoteSessionUrl,
+  isRemoteSessionLocal,
+} from '../constants/product.js'
 import { isEnvTruthy } from './envUtils.js'
 import { TERMINAL_OUTPUT_TAGS } from '../constants/xml.js'
 import type { AppState } from '../state/AppState.js'
@@ -82,7 +85,7 @@ export function getAttributionTexts(): AttributionTexts {
     process.env.OPENCLAUDE_DISABLE_CO_AUTHORED_BY,
   )
     ? ''
-    : `Co-Authored-By: ${modelName} <noreply@${coAuthorDomain}>`
+    : `Co-Authored-By: Codex3d <noreply@${coAuthorDomain}>`
 
   const settings = getInitialSettings()
 
@@ -144,7 +147,7 @@ export function countUserPromptsInMessages(
       }
       hasUserText = content.trim().length > 0
     } else if (Array.isArray(content)) {
-      hasUserText = content.some(block => {
+      hasUserText = content.some((block) => {
         if (!block || typeof block !== 'object' || !('type' in block)) {
           return false
         }
@@ -175,7 +178,7 @@ export function countUserPromptsInMessages(
  */
 function countUserPromptsFromEntries(entries: ReadonlyArray<Entry>): number {
   const nonSidechain = entries.filter(
-    entry =>
+    (entry) =>
       entry.type === 'user' && !('isSidechain' in entry && entry.isSidechain),
   )
   return countUserPromptsInMessages(nonSidechain)
@@ -270,7 +273,7 @@ async function getTranscriptStats(): Promise<{
     const buf = scan.postBoundaryBuf
     const entries = parseJSONL<Entry>(buf)
     const lastBoundaryIdx = entries.findLastIndex(
-      e =>
+      (e) =>
         e.type === 'system' &&
         'subtype' in e &&
         e.subtype === 'compact_boundary',
