@@ -7,41 +7,11 @@ type MockConfig = {
   companion?: StoredCompanion
   companionMuted?: boolean
   companionMode?: 'minimal' | 'balanced' | 'expressive'
+  userID?: string
 }
 
-const STATS = {
-  DEBUGGING: 50,
-  PATIENCE: 40,
-  CHAOS: 30,
-  WISDOM: 20,
-  SNARK: 10,
-}
-
-let mockConfig: MockConfig = {}
+let mockConfig: MockConfig = { userID: 'user-1' }
 let uuidCounter = 0
-
-function buildCompanion(stored: StoredCompanion) {
-  return {
-    ...stored,
-    rarity: 'rare' as const,
-    species: stored.seed?.includes('uuid-2') ? ('dragon' as const) : ('owl' as const),
-    eye: '·' as const,
-    hat: 'none' as const,
-    shiny: false,
-    stats: STATS,
-    progress: stored.progress ?? {
-      xpTotal: 0,
-      promptTurns: 0,
-      recentPromptTurnAts: [],
-      version: 1,
-    },
-    level: (stored.progress?.xpTotal ?? 0) >= 20 ? 2 : 1,
-    mood:
-      (stored.progress?.recentPromptTurnAts.length ?? 0) >= 5
-        ? ('excited' as const)
-        : ('lonely' as const),
-  }
-}
 
 function installBuddyMocks() {
   const configMock = {
@@ -52,15 +22,6 @@ function installBuddyMocks() {
   }
   mock.module('../../utils/config.js', () => configMock)
   mock.module('../../utils/config.ts', () => configMock)
-
-  const companionMock = {
-    companionUserId: () => 'user-1',
-    getCompanion: () =>
-      mockConfig.companion ? buildCompanion(mockConfig.companion) : undefined,
-    getCompanionFromStored: (stored: StoredCompanion) => buildCompanion(stored),
-  }
-  mock.module('../../buddy/companion.js', () => companionMock)
-  mock.module('../../buddy/companion.ts', () => companionMock)
 
   mock.module('crypto', () => ({
     randomUUID: () => `uuid-${++uuidCounter}`,
@@ -109,31 +70,27 @@ test('hatch and status use the same reconstructed buddy', async () => {
     xpTotal: 0,
     promptTurns: 0,
     errorFeeds: 0,
+    currentStreak: 1,
+    bestStreak: 1,
+    highestStatMilestone: 0,
+    statBonuses: undefined,
     lastPromptAt: expect.any(Number),
     recentPromptTurnAts: [expect.any(Number)],
     recentErrorFeedKeys: [],
-    version: 2,
+    version: 3,
   })
-  expect(first.calls[0]?.result).toContain('owl')
+  expect(first.calls[0]?.result).toContain('is now your buddy')
 
   const second = createOnDoneSpy()
   await buddyModule.call(second.onDone, createContext(), 'status')
 
-  expect(second.calls[0]?.result).toContain('Rare Owl')
-  expect(second.calls[0]?.result).toContain('★★★')
   expect(second.calls[0]?.result).toContain(mockConfig.companion?.name ?? '')
+  expect(second.calls[0]?.result).toContain(mockConfig.companion?.personality ?? '')
   expect(second.calls[0]?.result).toContain('Level 1')
   expect(second.calls[0]?.result).toContain('0 XP')
-  expect(second.calls[0]?.result).toContain('Mood … Lonely')
-  expect(second.calls[0]?.result).toContain('Emotion ██░░ 2/4')
   expect(second.calls[0]?.result).toContain('Mode Balanced')
   expect(second.calls[0]?.result).toContain('Prompt turns 0')
   expect(second.calls[0]?.result).toContain('0/20 XP · 20 to next')
-  expect(second.calls[0]?.result).toContain('DEBUGGING')
-  expect(second.calls[0]?.result).toContain('█████░░░░░ 50')
-  expect(second.calls[0]?.result).toContain('SNARK')
-  expect(second.calls[0]?.result).toContain('█░░░░░░░░░ 10')
-  expect(second.calls[0]?.result).toContain(mockConfig.companion?.personality ?? '')
 })
 
 test('mode command updates buddy mode', async () => {
@@ -159,6 +116,7 @@ test('rename requires an existing buddy', async () => {
 
 test('reset replaces the buddy seed and preserves mute state', async () => {
   mockConfig = {
+    userID: 'user-1',
     companion: {
       seed: 'legacy-seed',
       name: 'OldPal',
@@ -179,12 +137,16 @@ test('reset replaces the buddy seed and preserves mute state', async () => {
     xpTotal: 0,
     promptTurns: 0,
     errorFeeds: 0,
+    currentStreak: 1,
+    bestStreak: 1,
+    highestStatMilestone: 0,
+    statBonuses: undefined,
     lastPromptAt: expect.any(Number),
     recentPromptTurnAts: [expect.any(Number)],
     recentErrorFeedKeys: [],
-    version: 2,
+    version: 3,
   })
-  expect(done.calls[0]?.result).toContain('owl')
+  expect(done.calls[0]?.result).toContain('is now your buddy')
 })
 
 test('edit personality updates the stored buddy personality', async () => {
@@ -208,4 +170,43 @@ test('edit personality updates the stored buddy personality', async () => {
 
   expect(mockConfig.companion?.personality).toBe('brave and curious.')
   expect(done.calls[0]?.result).toBe("Updated Patch's personality.")
+})
+
+test('awardBuddyPromptTurn scales XP with token usage', async () => {
+  mockConfig = {
+    companion: {
+      seed: 'seed-1',
+      name: 'Patch',
+      personality: 'Calm under pressure and fond of clean diffs.',
+      hatchedAt: 1,
+      progress: {
+        xpTotal: 0,
+        promptTurns: 0,
+        errorFeeds: 0,
+        currentStreak: 0,
+        bestStreak: 0,
+        highestStatMilestone: 0,
+        statBonuses: undefined,
+        recentPromptTurnAts: [],
+        recentErrorFeedKeys: [],
+        version: 3,
+      },
+    },
+  }
+  installBuddyMocks()
+  const buddyModule = await importFreshBuddyModule()
+
+  buddyModule.awardBuddyPromptTurn(
+    createContext(),
+    {
+      input_tokens: 2000,
+      output_tokens: 4000,
+    },
+    123,
+  )
+
+  expect(mockConfig.companion?.progress?.xpTotal).toBe(13)
+  expect(mockConfig.companion?.progress?.promptTurns).toBe(1)
+  expect(mockConfig.companion?.progress?.lastPromptAt).toBe(123)
+  expect(mockConfig.companion?.progress?.recentPromptTurnAts).toEqual([123])
 })

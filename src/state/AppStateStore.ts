@@ -167,6 +167,8 @@ export type AppState = DeepImmutable<{
   viewingAgentTaskId?: string
   // Latest companion reaction from the friend observer (src/buddy/observer.ts)
   companionReaction?: string
+  // Latest XP gain awarded to buddy for footer display.
+  lastBuddyXpGain?: number
   // Timestamp of last /buddy pet — CompanionSprite renders hearts while recent
   companionPetAt?: number
   // Short-lived visual state used to prioritize companion animations.

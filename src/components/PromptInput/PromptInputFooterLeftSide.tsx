@@ -41,6 +41,7 @@ import { useHasSelection, useSelection } from '../../ink/hooks/use-selection.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { getPlatform } from '../../utils/platform.js';
 import { PrBadge } from '../PrBadge.js';
+import { BuddyProgressByline } from './BuddyProgressByline.js';
 
 // Dead code elimination: conditional import for proactive mode
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -125,7 +126,7 @@ function ProactiveCountdown() {
   return t4;
 }
 export function PromptInputFooterLeftSide(t0) {
-  const $ = _c(27);
+  const $ = _c(31);
   const {
     exitMessage,
     vimMode,
@@ -196,32 +197,42 @@ export function PromptInputFooterLeftSide(t0) {
   }
   const t4 = !suppressHint && !showVim;
   let t5;
-  if ($[13] !== isLoading || $[14] !== mode || $[15] !== onOpenTasksDialog || $[16] !== t4 || $[17] !== tasksSelected || $[18] !== teammateFooterIndex || $[19] !== teamsSelected || $[20] !== tmuxSelected || $[21] !== toolPermissionContext) {
-    t5 = <ModeIndicator mode={mode} toolPermissionContext={toolPermissionContext} showHint={t4} isLoading={isLoading} tasksSelected={tasksSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} onOpenTasksDialog={onOpenTasksDialog} />;
-    $[13] = isLoading;
+  if ($[13] !== isSearching || $[14] !== mode) {
+    t5 = mode === 'prompt' && !isSearching ? <BuddyProgressByline /> : null;
+    $[13] = isSearching;
     $[14] = mode;
-    $[15] = onOpenTasksDialog;
-    $[16] = t4;
-    $[17] = tasksSelected;
-    $[18] = teammateFooterIndex;
-    $[19] = teamsSelected;
-    $[20] = tmuxSelected;
-    $[21] = toolPermissionContext;
-    $[22] = t5;
+    $[15] = t5;
   } else {
-    t5 = $[22];
+    t5 = $[15];
   }
   let t6;
-  if ($[23] !== t2 || $[24] !== t3 || $[25] !== t5) {
-    t6 = <Box justifyContent="flex-start" gap={1}>{t2}{t3}{t5}</Box>;
-    $[23] = t2;
-    $[24] = t3;
-    $[25] = t5;
-    $[26] = t6;
+  if ($[16] !== isLoading || $[17] !== mode || $[18] !== onOpenTasksDialog || $[19] !== t4 || $[20] !== tasksSelected || $[21] !== teammateFooterIndex || $[22] !== teamsSelected || $[23] !== tmuxSelected || $[24] !== toolPermissionContext) {
+    t6 = <ModeIndicator mode={mode} toolPermissionContext={toolPermissionContext} showHint={t4} isLoading={isLoading} tasksSelected={tasksSelected} teamsSelected={teamsSelected} teammateFooterIndex={teammateFooterIndex} tmuxSelected={tmuxSelected} onOpenTasksDialog={onOpenTasksDialog} />;
+    $[16] = isLoading;
+    $[17] = mode;
+    $[18] = onOpenTasksDialog;
+    $[19] = t4;
+    $[20] = tasksSelected;
+    $[21] = teammateFooterIndex;
+    $[22] = teamsSelected;
+    $[23] = tmuxSelected;
+    $[24] = toolPermissionContext;
+    $[25] = t6;
   } else {
-    t6 = $[26];
+    t6 = $[25];
   }
-  return t6;
+  let t7;
+  if ($[26] !== t2 || $[27] !== t3 || $[28] !== t5 || $[29] !== t6) {
+    t7 = <Box justifyContent="flex-start" gap={1}>{t2}{t3}{t5}{t6}</Box>;
+    $[26] = t2;
+    $[27] = t3;
+    $[28] = t5;
+    $[29] = t6;
+    $[30] = t7;
+  } else {
+    t7 = $[30];
+  }
+  return t7;
 }
 type ModeIndicatorProps = {
   mode: PromptInputMode;

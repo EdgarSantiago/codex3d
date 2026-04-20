@@ -10,16 +10,22 @@ const RECENT_HISTORY_LIMIT = 20
 const RECENT_ERROR_FEED_LIMIT = 20
 const PROMPT_TURN_XP = 10
 const ERROR_FEED_XP = 5
+const TOKENS_PER_BONUS_XP = 2000
+const MAX_PROMPT_TURN_BONUS_XP = 5
 
 export function createDefaultBuddyProgress(now = Date.now()): BuddyProgress {
   return {
     xpTotal: 0,
     promptTurns: 0,
     errorFeeds: 0,
+    currentStreak: 1,
+    bestStreak: 1,
+    highestStatMilestone: 0,
+    statBonuses: undefined,
     lastPromptAt: now,
     recentPromptTurnAts: [now],
     recentErrorFeedKeys: [],
-    version: 2,
+    version: 3,
   }
 }
 
@@ -32,9 +38,13 @@ export function getBuddyProgress(
       xpTotal: 0,
       promptTurns: 0,
       errorFeeds: 0,
+      currentStreak: 0,
+      bestStreak: 0,
+      highestStatMilestone: 0,
+      statBonuses: undefined,
       recentPromptTurnAts: [],
       recentErrorFeedKeys: [],
-      version: 2,
+      version: 3,
     }
   }
 
@@ -42,10 +52,14 @@ export function getBuddyProgress(
     xpTotal: progress.xpTotal,
     promptTurns: progress.promptTurns,
     errorFeeds: progress.errorFeeds ?? 0,
+    currentStreak: progress.currentStreak ?? 0,
+    bestStreak: progress.bestStreak ?? progress.currentStreak ?? 0,
+    highestStatMilestone: progress.highestStatMilestone ?? 0,
+    statBonuses: progress.statBonuses,
     lastPromptAt: progress.lastPromptAt,
     recentPromptTurnAts: progress.recentPromptTurnAts,
     recentErrorFeedKeys: progress.recentErrorFeedKeys ?? [],
-    version: progress.version ?? 2,
+    version: progress.version ?? 3,
   }
 }
 
@@ -190,6 +204,17 @@ export function getBuddyMoodBar(progress: BuddyProgress, now = Date.now()): stri
   return `${meter.bar} ${meter.value}/${meter.max}`
 }
 
+export function getBuddyPromptTurnBonusXp(tokenUsage = 0): number {
+  return Math.max(
+    0,
+    Math.min(MAX_PROMPT_TURN_BONUS_XP, Math.floor(tokenUsage / TOKENS_PER_BONUS_XP)),
+  )
+}
+
+export function getBuddyPromptTurnXp(tokenUsage = 0): number {
+  return PROMPT_TURN_XP + getBuddyPromptTurnBonusXp(tokenUsage)
+}
+
 export function applyBuddyProgressEvent(
   progress: BuddyProgress,
   event: BuddyProgressEvent,
@@ -202,18 +227,34 @@ export function applyBuddyProgressEvent(
 
       return {
         ...progress,
-        xpTotal: progress.xpTotal + PROMPT_TURN_XP,
+        xpTotal: progress.xpTotal + event.xp,
         promptTurns: progress.promptTurns + 1,
+        currentStreak: 1,
+        bestStreak: Math.max(progress.bestStreak, 1),
         lastPromptAt: event.at,
         recentPromptTurnAts,
-        version: 2,
+        version: 3,
+      }
+    }
+    case 'prompt_turn_bonus': {
+      if (event.xp <= 0) {
+        return {
+          ...progress,
+          version: 3,
+        }
+      }
+
+      return {
+        ...progress,
+        xpTotal: progress.xpTotal + event.xp,
+        version: 3,
       }
     }
     case 'tool_error': {
       if (progress.recentErrorFeedKeys.includes(event.feedKey)) {
         return {
           ...progress,
-          version: 2,
+          version: 3,
         }
       }
 
@@ -224,7 +265,7 @@ export function applyBuddyProgressEvent(
         recentErrorFeedKeys: [...progress.recentErrorFeedKeys, event.feedKey].slice(
           -RECENT_ERROR_FEED_LIMIT,
         ),
-        version: 2,
+        version: 3,
       }
     }
     default: {

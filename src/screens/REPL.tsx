@@ -279,6 +279,7 @@ import { useIssueFlagBanner } from '../hooks/useIssueFlagBanner.js';
 import { CompanionSprite, CompanionFloatingBubble, MIN_COLS_FOR_FULL_SPRITE } from '../buddy/CompanionSprite.js';
 import { isBuddyEnabled } from '../buddy/feature.js';
 import { fireCompanionObserver } from '../buddy/observer.js';
+import { awardBuddyPromptTurn } from '../commands/buddy/buddy.js';
 import { DevBar } from '../components/DevBar.js';
 // Session manager removed - using AppState now
 import type { RemoteSessionConfig } from '../remote/RemoteSessionManager.js';
@@ -2823,6 +2824,7 @@ export function REPL({
     resetTurnHookDuration();
     resetTurnToolDuration();
     resetTurnClassifierDuration();
+    let sawSuccessfulAssistantReply = false;
     for await (const event of query({
       messages: messagesIncludingNewMessages,
       systemPrompt,
@@ -2833,6 +2835,14 @@ export function REPL({
       querySource: getQuerySourceForREPL()
     })) {
       onQueryEvent(event);
+      if (event.type === 'assistant' && !('isApiErrorMessage' in event && event.isApiErrorMessage)) {
+        sawSuccessfulAssistantReply = true;
+      }
+    }
+    if (sawSuccessfulAssistantReply) {
+      awardBuddyPromptTurn(toolUseContext, {
+        output_tokens: getTurnOutputTokens()
+      });
     }
     if (isBuddyEnabled()) {
       void fireCompanionObserver(messagesRef.current, reaction => setAppState(prev => prev.companionReaction !== undefined || prev.companionReaction === reaction ? prev : {

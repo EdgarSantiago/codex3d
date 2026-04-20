@@ -307,6 +307,10 @@ export type BuddyProgress = {
   xpTotal: number
   promptTurns: number
   errorFeeds: number
+  currentStreak: number
+  bestStreak: number
+  highestStatMilestone: number
+  statBonuses?: Partial<Record<StatName, number>>
   lastPromptAt?: number
   recentPromptTurnAts: number[]
   recentErrorFeedKeys: string[]
@@ -317,6 +321,11 @@ export type BuddyProgressEvent =
   | {
       type: 'prompt_turn'
       at: number
+      xp: number
+    }
+  | {
+      type: 'prompt_turn_bonus'
+      xp: number
     }
   | {
       type: 'tool_error'

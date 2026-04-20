@@ -5,9 +5,11 @@ import {
   createDefaultBuddyProgress,
   getBuddyLevel,
   getBuddyLevelProgress,
+  getBuddyLevelProgressBar,
   getBuddyMood,
   getBuddyMoodBar,
   getBuddyProgress,
+  getBuddyPromptTurnXp,
 } from './progression.js'
 
 test('getBuddyProgress returns zeroed defaults for legacy buddies', () => {
@@ -15,9 +17,13 @@ test('getBuddyProgress returns zeroed defaults for legacy buddies', () => {
     xpTotal: 0,
     promptTurns: 0,
     errorFeeds: 0,
+    currentStreak: 0,
+    bestStreak: 0,
+    highestStatMilestone: 0,
+    statBonuses: undefined,
     recentPromptTurnAts: [],
     recentErrorFeedKeys: [],
-    version: 2,
+    version: 3,
   })
 })
 
@@ -26,9 +32,10 @@ test('applyBuddyProgressEvent increments XP and prompt turns', () => {
   const next = applyBuddyProgressEvent(start, {
     type: 'prompt_turn',
     at: 100,
+    xp: 12,
   })
 
-  expect(next.xpTotal).toBe(10)
+  expect(next.xpTotal).toBe(12)
   expect(next.promptTurns).toBe(1)
   expect(next.errorFeeds).toBe(0)
   expect(next.lastPromptAt).toBe(100)
@@ -68,6 +75,10 @@ test('getBuddyProgress backfills error-feed fields for legacy progress', () => {
     xpTotal: 10,
     promptTurns: 1,
     errorFeeds: 0,
+    currentStreak: 0,
+    bestStreak: 0,
+    highestStatMilestone: 0,
+    statBonuses: undefined,
     lastPromptAt: undefined,
     recentPromptTurnAts: [100],
     recentErrorFeedKeys: [],
@@ -117,6 +128,19 @@ test('getBuddyLevelProgress reports the current level segment', () => {
     xpNeededThisLevel: 30,
     xpRemaining: 1,
   })
+})
+
+test('getBuddyLevelProgressBar renders a compact XP bar', () => {
+  expect(getBuddyLevelProgressBar(10, 6)).toBe('███░░░')
+  expect(getBuddyLevelProgressBar(49, 6)).toBe('██████')
+})
+
+test('getBuddyPromptTurnXp scales with token usage and caps bonus XP', () => {
+  expect(getBuddyPromptTurnXp(0)).toBe(10)
+  expect(getBuddyPromptTurnXp(1999)).toBe(10)
+  expect(getBuddyPromptTurnXp(2000)).toBe(11)
+  expect(getBuddyPromptTurnXp(10000)).toBe(15)
+  expect(getBuddyPromptTurnXp(50000)).toBe(15)
 })
 
 test('getBuddyMoodBar reflects simple emotional progression', () => {
@@ -218,9 +242,13 @@ test('createDefaultBuddyProgress seeds initial prompt history', () => {
     xpTotal: 0,
     promptTurns: 0,
     errorFeeds: 0,
+    currentStreak: 1,
+    bestStreak: 1,
+    highestStatMilestone: 0,
+    statBonuses: undefined,
     lastPromptAt: 123,
     recentPromptTurnAts: [123],
     recentErrorFeedKeys: [],
-    version: 2,
+    version: 3,
   })
 })

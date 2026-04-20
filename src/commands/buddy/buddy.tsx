@@ -25,6 +25,7 @@ import {
   getBuddyMoodBar,
   getBuddyMoodDisplay,
   getBuddyProgress,
+  getBuddyPromptTurnBonusXp,
 } from '../../buddy/progression.js'
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
 
@@ -127,6 +128,16 @@ export function setCompanionReaction(
             at: now,
           }
         : prev.companionAnimation,
+  }))
+}
+
+function setBuddyXpGain(
+  context: Pick<LocalJSXCommandContext, 'setAppState'>,
+  xpGain: number | undefined,
+): void {
+  context.setAppState(prev => ({
+    ...prev,
+    lastBuddyXpGain: xpGain,
   }))
 }
 
@@ -318,6 +329,10 @@ function saveBuddy(stored: StoredCompanion, unmute = false): Companion {
 
 export function awardBuddyPromptTurn(
   context: Pick<LocalJSXCommandContext, 'setAppState'>,
+  usage: {
+    input_tokens?: number
+    output_tokens?: number
+  },
   now = Date.now(),
 ): Companion | undefined {
   const stored = getStoredCompanion()
@@ -330,11 +345,19 @@ export function awardBuddyPromptTurn(
   const nextProgress = applyBuddyProgressEvent(currentProgress, {
     type: 'prompt_turn',
     at: now,
+    xp: 10,
+  })
+
+  const tokenUsage = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
+  const promptTurnBonusXp = getBuddyPromptTurnBonusXp(tokenUsage)
+  const finalProgress = applyBuddyProgressEvent(nextProgress, {
+    type: 'prompt_turn_bonus',
+    xp: promptTurnBonusXp,
   })
 
   const nextStored = {
     ...stored,
-    progress: nextProgress,
+    progress: finalProgress,
   }
 
   saveGlobalConfig(current => ({
@@ -342,14 +365,16 @@ export function awardBuddyPromptTurn(
     companion: nextStored,
   }))
 
+  const awardedXp = 10 + promptTurnBonusXp
   const companion = getCompanionFromStored(nextStored)
-  const nextLevel = getBuddyLevelProgress(nextProgress.xpTotal).level
+  const nextLevel = getBuddyLevelProgress(finalProgress.xpTotal).level
+  setBuddyXpGain(context, awardedXp)
   if (!getGlobalConfig().companionMuted) {
     setCompanionReaction(
       context,
       nextLevel > currentLevel
         ? `${companion.name} leveled up to ${nextLevel}!`
-        : `+10 XP`,
+        : `+${awardedXp} XP`,
       false,
       'speak',
     )
