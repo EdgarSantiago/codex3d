@@ -303,18 +303,48 @@ export function createBuddyModeNote(): string {
   return 'Minimal disables token-sensitive buddy commentary and model-facing buddy context while keeping local progression and visuals active.'
 }
 
+export type BuddyProductiveTurnSummary = {
+  toolSuccesses: number
+  toolDurationMs: number
+}
+
 export type BuddyProgress = {
   xpTotal: number
   promptTurns: number
+  productiveTurns: number
+  workDurationMs: number
   errorFeeds: number
   currentStreak: number
   bestStreak: number
+  currentCombo: number
+  bestCombo: number
   highestStatMilestone: number
   statBonuses?: Partial<Record<StatName, number>>
   lastPromptAt?: number
+  lastWorkAt?: number
+  lastComboAt?: number
+  lastStreakDay?: number
   recentPromptTurnAts: number[]
+  recentWorkAts: number[]
   recentErrorFeedKeys: string[]
   version: number
+}
+
+export type BuddyAchievementId =
+  | 'first-productive-turn'
+  | 'combo-starter'
+  | 'combo-master'
+  | 'streak-starter'
+  | 'streak-keeper'
+  | 'error-taster'
+  | 'deep-work'
+  | 'centurion'
+
+export type BuddyAchievement = {
+  id: BuddyAchievementId
+  label: string
+  shortLabel: string
+  description: string
 }
 
 export type BuddyProgressEvent =
@@ -322,6 +352,12 @@ export type BuddyProgressEvent =
       type: 'prompt_turn'
       at: number
       xp: number
+    }
+  | {
+      type: 'productive_turn'
+      at: number
+      toolSuccesses: number
+      toolDurationMs: number
     }
   | {
       type: 'prompt_turn_bonus'

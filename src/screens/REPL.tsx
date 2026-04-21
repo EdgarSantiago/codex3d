@@ -2839,10 +2839,18 @@ export function REPL({
         sawSuccessfulAssistantReply = true;
       }
     }
+    const productiveTurn = store.getState().buddyProductiveTurn;
     if (sawSuccessfulAssistantReply) {
       awardBuddyPromptTurn(toolUseContext, {
-        output_tokens: getTurnOutputTokens()
+        output_tokens: getTurnOutputTokens(),
+        productiveTurn
       });
+    }
+    if (productiveTurn !== undefined) {
+      setAppState(prev => ({
+        ...prev,
+        buddyProductiveTurn: undefined
+      }));
     }
     if (isBuddyEnabled()) {
       void fireCompanionObserver(messagesRef.current, reaction => setAppState(prev => prev.companionReaction !== undefined || prev.companionReaction === reaction ? prev : {

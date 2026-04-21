@@ -27,6 +27,9 @@ const IDLE_SEQUENCE = [0, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, 2, 0, 0, 0];
 const H = figures.heart;
 const PET_HEARTS = [`   ${H}    ${H}   `, `  ${H}  ${H}   ${H}  `, ` ${H}   ${H}  ${H}   `, `${H}  ${H}      ${H} `, '·    ·   ·  '];
 const ERROR_FEED_BURSTS = ['  ×  ×  ×   ', ' ×   !   ×  ', '×   ××   ×  ', ' ×   !   ×  ', '  ·  ·  ·   '];
+const COMBO_BURSTS = ['  ✦  »  ✦   ', ' »   ✦   »  ', '✦   »»   ✦  ', ' »   ✦   »  ', '  ·  ·  ·   '];
+const ACHIEVEMENT_BURSTS = ['  ★  ✦  ★   ', ' ✦   ★   ✦  ', '★   ✦✦   ★  ', ' ✦   ★   ✦  ', '  ·  ·  ·   '];
+const LEVEL_UP_BURSTS = ['  ★  ✦  ★   ', ' ✦  +1  ✦   ', '★  LEVEL ★  ', ' ✦  UP! ✦   ', '  ·  ·  ·   '];
 function wrap(text: string, width: number): string[] {
   const words = text.split(' ');
   const lines: string[] = [];
@@ -43,113 +46,61 @@ function wrap(text: string, width: number): string[] {
   return lines;
 }
 function SpeechBubble(t0) {
-  const $ = _c(31);
+  const $ = _c(54);
   const {
     text,
     color,
     fading,
-    tail
+    tail,
+    variant = 'default'
   } = t0;
-  let T0;
-  let borderColor;
-  let t1;
-  let t2;
-  let t3;
-  let t4;
-  let t5;
-  let t6;
-  if ($[0] !== color || $[1] !== fading || $[2] !== text) {
-    const lines = wrap(text, 30);
-    borderColor = fading ? "inactive" : color;
-    T0 = Box;
-    t1 = "column";
-    t2 = "round";
-    t3 = borderColor;
-    t4 = 1;
-    t5 = 34;
-    let t7;
-    if ($[11] !== fading) {
-      t7 = (l, i) => <Text key={i} italic={true} dimColor={!fading} color={fading ? "inactive" : undefined}>{l}</Text>;
-      $[11] = fading;
-      $[12] = t7;
-    } else {
-      t7 = $[12];
-    }
-    t6 = lines.map(t7);
-    $[0] = color;
-    $[1] = fading;
-    $[2] = text;
-    $[3] = T0;
-    $[4] = borderColor;
-    $[5] = t1;
-    $[6] = t2;
-    $[7] = t3;
-    $[8] = t4;
-    $[9] = t5;
-    $[10] = t6;
-  } else {
-    T0 = $[3];
-    borderColor = $[4];
-    t1 = $[5];
-    t2 = $[6];
-    t3 = $[7];
-    t4 = $[8];
-    t5 = $[9];
-    t6 = $[10];
-  }
-  let t7;
-  if ($[13] !== T0 || $[14] !== t1 || $[15] !== t2 || $[16] !== t3 || $[17] !== t4 || $[18] !== t5 || $[19] !== t6) {
-    t7 = <T0 flexDirection={t1} borderStyle={t2} borderColor={t3} paddingX={t4} width={t5}>{t6}</T0>;
-    $[13] = T0;
-    $[14] = t1;
-    $[15] = t2;
-    $[16] = t3;
-    $[17] = t4;
-    $[18] = t5;
-    $[19] = t6;
-    $[20] = t7;
-  } else {
-    t7 = $[20];
-  }
-  const bubble = t7;
+  const eventBorderColor = fading
+    ? 'inactive'
+    : variant === 'errorFeed'
+      ? 'warning'
+      : variant === 'combo'
+        ? 'permission'
+        : variant === 'achievement' || variant === 'levelUp'
+          ? 'warning'
+          : color;
+  const borderStyle = variant === 'default' ? 'round' : 'single';
+  const textColor = fading
+    ? 'inactive'
+    : variant === 'errorFeed'
+      ? 'warning'
+      : variant === 'combo'
+        ? 'permission'
+        : undefined;
+  const badge = variant === 'levelUp'
+    ? '★'
+    : variant === 'achievement'
+      ? '★'
+      : variant === 'combo'
+        ? '✦'
+        : variant === 'errorFeed'
+          ? '!'
+          : undefined;
+  const lines = wrap(text, 30);
+  const topLines = badge ? lines.map((line, index) => index === 0 ? `${badge} ${line}` : line) : lines;
+  const bubble = <Box flexDirection="column" borderStyle={borderStyle} borderColor={eventBorderColor} paddingX={1} width={34}>{topLines.map((l, i) => <Text key={i} italic={variant === 'default'} bold={variant !== 'default'} dimColor={!fading} color={textColor}>{l}</Text>)}</Box>;
   if (tail === "right") {
-    let t8;
-    if ($[21] !== borderColor) {
-      t8 = <Text color={borderColor}>─</Text>;
-      $[21] = borderColor;
-      $[22] = t8;
-    } else {
-      t8 = $[22];
-    }
-    let t9;
-    if ($[23] !== bubble || $[24] !== t8) {
-      t9 = <Box flexDirection="row" alignItems="center">{bubble}{t8}</Box>;
-      $[23] = bubble;
-      $[24] = t8;
-      $[25] = t9;
-    } else {
-      t9 = $[25];
-    }
-    return t9;
+    const tailGlyph = variant === 'combo'
+      ? '╾'
+      : variant === 'levelUp' || variant === 'achievement'
+        ? '═'
+        : variant === 'errorFeed'
+          ? '╍'
+          : '─';
+    return <Box flexDirection="row" alignItems="center">{bubble}<Text color={eventBorderColor}>{tailGlyph}</Text></Box>;
   }
-  let t8;
-  if ($[26] !== borderColor) {
-    t8 = <Box flexDirection="column" alignItems="flex-end" paddingRight={6}><Text color={borderColor}>╲ </Text><Text color={borderColor}>╲</Text></Box>;
-    $[26] = borderColor;
-    $[27] = t8;
-  } else {
-    t8 = $[27];
-  }
-  let t9;
-  if ($[28] !== bubble || $[29] !== t8) {
-    t9 = <Box flexDirection="column" alignItems="flex-end" marginRight={1}>{bubble}{t8}</Box>;
-    $[28] = bubble;
-    $[29] = t8;
-    $[30] = t9;
-  } else {
-    t9 = $[30];
-  }
-  return t9;
+  const downTail = variant === 'combo'
+    ? ['╲ ', ' ╲']
+    : variant === 'levelUp' || variant === 'achievement'
+      ? ['║ ', '╲']
+      : variant === 'errorFeed'
+        ? ['╳ ', '╲']
+        : ['╲ ', '╲'];
+  return <Box flexDirection="column" alignItems="flex-end" marginRight={1}>{bubble}<Box flexDirection="column" alignItems="flex-end" paddingRight={6}><Text color={eventBorderColor}>{downTail[0]}</Text><Text color={eventBorderColor}>{downTail[1]}</Text></Box></Box>;
 }
 export const MIN_COLS_FOR_FULL_SPRITE = 100;
 const SPRITE_BODY_WIDTH = 12;
@@ -231,7 +182,7 @@ export function CompanionSprite(): React.ReactNode {
   if (columns < MIN_COLS_FOR_FULL_SPRITE) {
     const quip = reaction && reaction.length > NARROW_QUIP_CAP ? reaction.slice(0, NARROW_QUIP_CAP - 1) + '…' : reaction;
     const label = quip ? `"${quip}"` : focused ? ` ${companion.name} ` : companion.name;
-    const narrowPrefix = animation?.kind === 'errorFeed' ? <Text color="warning">× </Text> : petting ? <Text color="autoAccept">{figures.heart} </Text> : null;
+    const narrowPrefix = animation?.kind === 'levelUp' ? <Text color="warning">▲ </Text> : animation?.kind === 'achievement' ? <Text color="warning">★ </Text> : animation?.kind === 'combo' ? <Text color="permission">✦ </Text> : animation?.kind === 'errorFeed' ? <Text color="warning">× </Text> : petting ? <Text color="autoAccept">{figures.heart} </Text> : null;
     return <Box paddingX={1} alignSelf="flex-end">
         <Text>
           {narrowPrefix}
@@ -254,7 +205,10 @@ export function CompanionSprite(): React.ReactNode {
     petAt,
     animation,
   });
-  const effectFrame = visualDecision.activeKind === 'pet' ? PET_HEARTS[petAge % PET_HEARTS.length] : visualDecision.activeKind === 'errorFeed' ? ERROR_FEED_BURSTS[tick % ERROR_FEED_BURSTS.length] : null;
+  const effectFrame = visualDecision.activeKind === 'pet' ? PET_HEARTS[petAge % PET_HEARTS.length] : visualDecision.activeKind === 'levelUp' ? LEVEL_UP_BURSTS[tick % LEVEL_UP_BURSTS.length] : visualDecision.activeKind === 'achievement' ? ACHIEVEMENT_BURSTS[tick % ACHIEVEMENT_BURSTS.length] : visualDecision.activeKind === 'combo' ? COMBO_BURSTS[tick % COMBO_BURSTS.length] : visualDecision.activeKind === 'errorFeed' ? ERROR_FEED_BURSTS[tick % ERROR_FEED_BURSTS.length] : null;
+  const bubbleVariant = visualDecision.activeKind === 'levelUp' || visualDecision.activeKind === 'achievement' || visualDecision.activeKind === 'combo' || visualDecision.activeKind === 'errorFeed'
+    ? visualDecision.activeKind
+    : 'default';
   const spriteFrame = visualDecision.spriteFrame;
   const blink = visualDecision.blink;
   const body = renderSprite(companion, spriteFrame).map(line => blink ? line.replaceAll(companion.eye, '-') : line);
@@ -266,7 +220,7 @@ export function CompanionSprite(): React.ReactNode {
   // sprite doesn't jump up when selected. flexShrink=0 stops the
   // inline-bubble row wrapper from squeezing the sprite to fit.
   const spriteColumn = <Box flexDirection="column" flexShrink={0} alignItems="center" width={colWidth}>
-      {sprite.map((line, i) => <Text key={i} color={i === 0 && visualDecision.activeKind === 'pet' ? 'autoAccept' : i === 0 && visualDecision.activeKind === 'errorFeed' ? 'warning' : color}>
+      {sprite.map((line, i) => <Text key={i} color={i === 0 && visualDecision.activeKind === 'pet' ? 'autoAccept' : i === 0 && visualDecision.activeKind === 'levelUp' ? 'warning' : i === 0 && visualDecision.activeKind === 'achievement' ? 'warning' : i === 0 && visualDecision.activeKind === 'combo' ? 'permission' : i === 0 && visualDecision.activeKind === 'errorFeed' ? 'warning' : color}>
           {line}
         </Text>)}
       <Text italic bold={focused} dimColor={!focused} color={focused ? color : undefined} inverse={focused}>
@@ -286,7 +240,7 @@ export function CompanionSprite(): React.ReactNode {
     return <Box paddingX={1}>{spriteColumn}</Box>;
   }
   return <Box flexDirection="row" alignItems="flex-end" paddingX={1} flexShrink={0}>
-      <SpeechBubble text={reaction} color={color} fading={fading} tail="right" />
+      <SpeechBubble text={reaction} color={color} fading={fading} tail="right" variant={bubbleVariant} />
       {spriteColumn}
     </Box>;
 }
@@ -298,6 +252,7 @@ export function CompanionSprite(): React.ReactNode {
 export function CompanionFloatingBubble() {
   const $ = _c(8);
   const reaction = useAppState(_temp);
+  const animation = useAppState(s => s.companionAnimation);
   let t0;
   if ($[0] !== reaction) {
     t0 = {
@@ -348,13 +303,20 @@ export function CompanionFloatingBubble() {
   }
   const t4 = tick >= BUBBLE_SHOW - FADE_WINDOW;
   let t5;
-  if ($[5] !== reaction || $[6] !== t4) {
-    t5 = <SpeechBubble text={reaction} color={RARITY_COLORS[companion.rarity]} fading={t4} tail="down" />;
-    $[5] = reaction;
-    $[6] = t4;
-    $[7] = t5;
+  if ($[5] !== animation?.kind || $[6] !== reaction || $[7] !== t4) {
+    const variant = animation?.kind === 'levelUp' ||
+        animation?.kind === 'achievement' ||
+        animation?.kind === 'combo' ||
+        animation?.kind === 'errorFeed'
+      ? animation.kind
+      : 'default';
+    t5 = <SpeechBubble text={reaction} color={RARITY_COLORS[companion.rarity]} fading={t4} tail="down" variant={variant} />;
+    $[5] = animation?.kind;
+    $[6] = reaction;
+    $[7] = t4;
+    $[8] = t5;
   } else {
-    t5 = $[7];
+    t5 = $[8];
   }
   return t5;
 }

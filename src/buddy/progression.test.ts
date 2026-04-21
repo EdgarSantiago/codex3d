@@ -3,6 +3,9 @@ import { expect, test } from 'bun:test'
 import {
   applyBuddyProgressEvent,
   createDefaultBuddyProgress,
+  getBuddyAchievementCount,
+  getBuddyAchievements,
+  getBuddyComboBonusXp,
   getBuddyLevel,
   getBuddyLevelProgress,
   getBuddyLevelProgressBar,
@@ -16,14 +19,23 @@ test('getBuddyProgress returns zeroed defaults for legacy buddies', () => {
   expect(getBuddyProgress({})).toEqual({
     xpTotal: 0,
     promptTurns: 0,
+    productiveTurns: 0,
+    workDurationMs: 0,
     errorFeeds: 0,
     currentStreak: 0,
     bestStreak: 0,
+    currentCombo: 0,
+    bestCombo: 0,
     highestStatMilestone: 0,
     statBonuses: undefined,
+    lastPromptAt: undefined,
+    lastWorkAt: undefined,
+    lastComboAt: undefined,
+    lastStreakDay: undefined,
     recentPromptTurnAts: [],
+    recentWorkAts: [],
     recentErrorFeedKeys: [],
-    version: 3,
+    version: 4,
   })
 })
 
@@ -61,7 +73,7 @@ test('tool_error awards XP once and dedupes by feed key', () => {
   expect(second).toEqual(first)
 })
 
-test('getBuddyProgress backfills error-feed fields for legacy progress', () => {
+test('getBuddyProgress backfills productivity fields for legacy progress', () => {
   expect(
     getBuddyProgress({
       progress: {
@@ -74,15 +86,23 @@ test('getBuddyProgress backfills error-feed fields for legacy progress', () => {
   ).toEqual({
     xpTotal: 10,
     promptTurns: 1,
+    productiveTurns: 0,
+    workDurationMs: 0,
     errorFeeds: 0,
     currentStreak: 0,
     bestStreak: 0,
+    currentCombo: 0,
+    bestCombo: 0,
     highestStatMilestone: 0,
     statBonuses: undefined,
     lastPromptAt: undefined,
+    lastWorkAt: undefined,
+    lastComboAt: undefined,
+    lastStreakDay: undefined,
     recentPromptTurnAts: [100],
+    recentWorkAts: [],
     recentErrorFeedKeys: [],
-    version: 1,
+    version: 4,
   })
 })
 
@@ -148,10 +168,18 @@ test('getBuddyMoodBar reflects simple emotional progression', () => {
     getBuddyMoodBar({
       xpTotal: 0,
       promptTurns: 0,
+      productiveTurns: 0,
+      workDurationMs: 0,
       errorFeeds: 0,
+      currentStreak: 0,
+      bestStreak: 0,
+      currentCombo: 0,
+      bestCombo: 0,
+      highestStatMilestone: 0,
       recentPromptTurnAts: [],
+      recentWorkAts: [],
       recentErrorFeedKeys: [],
-      version: 1,
+      version: 4,
     }),
   ).toBe('░░░░ 0/4')
 
@@ -159,16 +187,24 @@ test('getBuddyMoodBar reflects simple emotional progression', () => {
     getBuddyMoodBar({
       xpTotal: 20,
       promptTurns: 2,
+      productiveTurns: 0,
+      workDurationMs: 0,
       errorFeeds: 0,
+      currentStreak: 0,
+      bestStreak: 0,
+      currentCombo: 0,
+      bestCombo: 0,
+      highestStatMilestone: 0,
       lastPromptAt: Date.now() - 1000,
       recentPromptTurnAts: [Date.now() - 2000, Date.now() - 1000],
+      recentWorkAts: [],
       recentErrorFeedKeys: [],
-      version: 1,
+      version: 4,
     }),
-  ).toBe('███░ 3/4')
+  ).toBe('████ 4/4')
 })
 
-test('getBuddyMood derives simple states from recent prompt activity', () => {
+test('getBuddyMood derives states from prompt fallback and productive work', () => {
   const now = 10 * 24 * 60 * 60 * 1000
 
   expect(
@@ -176,10 +212,18 @@ test('getBuddyMood derives simple states from recent prompt activity', () => {
       {
         xpTotal: 0,
         promptTurns: 0,
+        productiveTurns: 0,
+        workDurationMs: 0,
         errorFeeds: 0,
+        currentStreak: 0,
+        bestStreak: 0,
+        currentCombo: 0,
+        bestCombo: 0,
+        highestStatMilestone: 0,
         recentPromptTurnAts: [],
+        recentWorkAts: [],
         recentErrorFeedKeys: [],
-        version: 1,
+        version: 4,
       },
       now,
     ),
@@ -190,11 +234,19 @@ test('getBuddyMood derives simple states from recent prompt activity', () => {
       {
         xpTotal: 10,
         promptTurns: 1,
+        productiveTurns: 0,
+        workDurationMs: 0,
         errorFeeds: 0,
+        currentStreak: 0,
+        bestStreak: 0,
+        currentCombo: 0,
+        bestCombo: 0,
+        highestStatMilestone: 0,
         lastPromptAt: now - 24 * 60 * 60 * 1000,
         recentPromptTurnAts: [now - 24 * 60 * 60 * 1000],
+        recentWorkAts: [],
         recentErrorFeedKeys: [],
-        version: 1,
+        version: 4,
       },
       now,
     ),
@@ -205,11 +257,19 @@ test('getBuddyMood derives simple states from recent prompt activity', () => {
       {
         xpTotal: 40,
         promptTurns: 4,
+        productiveTurns: 0,
+        workDurationMs: 0,
         errorFeeds: 0,
+        currentStreak: 0,
+        bestStreak: 0,
+        currentCombo: 0,
+        bestCombo: 0,
+        highestStatMilestone: 0,
         lastPromptAt: now - 6 * 24 * 60 * 60 * 1000,
         recentPromptTurnAts: [now - 6 * 24 * 60 * 60 * 1000],
+        recentWorkAts: [],
         recentErrorFeedKeys: [],
-        version: 1,
+        version: 4,
       },
       now,
     ),
@@ -220,35 +280,90 @@ test('getBuddyMood derives simple states from recent prompt activity', () => {
       {
         xpTotal: 60,
         promptTurns: 6,
+        productiveTurns: 3,
+        workDurationMs: 10 * 60 * 1000,
         errorFeeds: 0,
+        currentStreak: 2,
+        bestStreak: 2,
+        currentCombo: 2,
+        bestCombo: 2,
+        highestStatMilestone: 0,
         lastPromptAt: now - 1000,
-        recentPromptTurnAts: [
-          now - 1000,
-          now - 2000,
-          now - 3000,
-          now - 4000,
-          now - 5000,
-        ],
+        lastWorkAt: now - 1000,
+        lastComboAt: now - 1000,
+        lastStreakDay: 1,
+        recentPromptTurnAts: [now - 1000],
+        recentWorkAts: [now - 1000, now - 2000],
         recentErrorFeedKeys: [],
-        version: 1,
+        version: 4,
       },
       now,
     ),
   ).toBe('excited')
 })
 
-test('createDefaultBuddyProgress seeds initial prompt history', () => {
+test('createDefaultBuddyProgress starts with no fake activity', () => {
   expect(createDefaultBuddyProgress(123)).toEqual({
     xpTotal: 0,
     promptTurns: 0,
+    productiveTurns: 0,
+    workDurationMs: 0,
     errorFeeds: 0,
-    currentStreak: 1,
-    bestStreak: 1,
+    currentStreak: 0,
+    bestStreak: 0,
+    currentCombo: 0,
+    bestCombo: 0,
     highestStatMilestone: 0,
     statBonuses: undefined,
-    lastPromptAt: 123,
-    recentPromptTurnAts: [123],
+    lastPromptAt: undefined,
+    lastWorkAt: undefined,
+    lastComboAt: undefined,
+    lastStreakDay: undefined,
+    recentPromptTurnAts: [],
+    recentWorkAts: [],
     recentErrorFeedKeys: [],
-    version: 3,
+    version: 4,
   })
+})
+
+test('productive turns update combo, streak, work time, and achievements', () => {
+  const start = getBuddyProgress({})
+  const first = applyBuddyProgressEvent(start, {
+    type: 'productive_turn',
+    at: 24 * 60 * 60 * 1000,
+    toolSuccesses: 2,
+    toolDurationMs: 120000,
+  })
+  const second = applyBuddyProgressEvent(first, {
+    type: 'productive_turn',
+    at: 24 * 60 * 60 * 1000 + 5 * 60 * 1000,
+    toolSuccesses: 1,
+    toolDurationMs: 180000,
+  })
+  const third = applyBuddyProgressEvent(second, {
+    type: 'productive_turn',
+    at: 2 * 24 * 60 * 60 * 1000,
+    toolSuccesses: 1,
+    toolDurationMs: 30 * 60 * 1000,
+  })
+
+  expect(first.productiveTurns).toBe(1)
+  expect(first.currentCombo).toBe(1)
+  expect(first.currentStreak).toBe(1)
+
+  expect(second.currentCombo).toBe(2)
+  expect(second.bestCombo).toBe(2)
+  expect(second.currentStreak).toBe(1)
+
+  expect(third.currentCombo).toBe(1)
+  expect(third.currentStreak).toBe(2)
+  expect(third.bestStreak).toBe(2)
+  expect(third.workDurationMs).toBe(35 * 60 * 1000)
+  expect(getBuddyComboBonusXp(second.currentCombo)).toBe(1)
+  expect(getBuddyAchievementCount(third)).toBe(3)
+  expect(getBuddyAchievements(third).map(a => a.id)).toEqual([
+    'first-productive-turn',
+    'combo-starter',
+    'deep-work',
+  ])
 })

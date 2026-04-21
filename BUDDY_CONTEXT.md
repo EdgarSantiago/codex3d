@@ -10,11 +10,14 @@ It currently supports:
 - one active buddy
 - companion management commands
 - persistent XP and mood progression
+- productivity-driven progression (`productiveTurns`, work time, combos, streaks)
+- passive achievements derived from local progress
 - prompt-turn XP
 - error feeding from real tool failures
 - mood-aware cyber commentary
 - transient visual-state animation
-- a dedicated error-fed animation state
+- dedicated special-event visual states for `errorFeed`, `combo`, `achievement`, and `levelUp`
+- game-like ASCII burst art and RPG-style event speech bubble variants
 - buddy modes for token-safe vs richer behavior
 
 The architecture is intentionally split into:
@@ -126,9 +129,19 @@ The buddy now stores progression data in config.
 Persisted progress currently includes:
 - `xpTotal`
 - `promptTurns`
+- `productiveTurns`
+- `workDurationMs`
 - `errorFeeds`
+- `currentStreak`
+- `bestStreak`
+- `currentCombo`
+- `bestCombo`
 - `lastPromptAt`
+- `lastWorkAt`
+- `lastComboAt`
+- `lastStreakDay`
 - `recentPromptTurnAts`
+- `recentWorkAts`
 - `recentErrorFeedKeys`
 - `version`
 
@@ -147,7 +160,7 @@ Main logic:
 - `getBuddyLevel(...)` in `src/buddy/progression.ts`
 
 ### 4. Mood system
-Mood is derived from recent prompt activity.
+Mood is now derived from recent productive work activity, with prompt activity only as a fallback for older buddies.
 
 Current moods:
 - `excited`
@@ -204,6 +217,9 @@ There is now a transient visual-state layer with kinds:
 - `pet`
 - `speak`
 - `errorFeed`
+- `combo`
+- `achievement`
+- `levelUp`
 
 Priority is handled in a pure helper.
 
@@ -212,8 +228,16 @@ Main files:
 - `src/state/AppStateStore.ts`
 - `src/buddy/CompanionSprite.tsx`
 
-### 9. Dedicated error-fed animation state
-When a real tool error is fed to the buddy, the renderer can now enter a dedicated `errorFeed` visual state.
+### 9. Dedicated event animation states
+The renderer can now enter dedicated event animation states for:
+- `errorFeed`
+- `combo`
+- `achievement`
+- `levelUp`
+
+When a real tool error is fed to the buddy, the renderer enters `errorFeed`.
+When a productive turn increases combo or unlocks an achievement, the renderer can enter `combo` or `achievement`.
+When a turn crosses a level threshold, the renderer enters `levelUp`.
 
 That state currently:
 - outranks pet/speaking/idle in priority
@@ -271,6 +295,8 @@ Relevant file:
 
 Current transient buddy UI fields:
 - `companionReaction`
+- `lastBuddyXpGain`
+- `buddyProductiveTurn`
 - `companionPetAt`
 - `companionAnimation`
 
@@ -330,9 +356,12 @@ The earlier Bun cross-file mock collision was addressed by making the config moc
 
 The intended animation priority is:
 1. `errorFeed`
-2. `pet`
-3. `speak`
-4. mood-driven idle
+2. `levelUp`
+3. `achievement`
+4. `combo`
+5. `pet`
+6. `speak`
+7. mood-driven idle
 
 That logic lives in:
 - `src/buddy/visualState.ts`

@@ -6,7 +6,12 @@ import {
   getCompanion,
   getCompanionFromStored,
 } from '../../buddy/companion.js'
-import type { BuddyMode, Companion, StoredCompanion } from '../../buddy/types.js'
+import type {
+  BuddyMode,
+  BuddyProductiveTurnSummary,
+  Companion,
+  StoredCompanion,
+} from '../../buddy/types.js'
 import {
   formatBuddyMode,
   getBuddyMode,
@@ -20,12 +25,17 @@ import {
 import {
   applyBuddyProgressEvent,
   createDefaultBuddyProgress,
+  formatBuddyWorkDuration,
+  getBuddyAchievementCount,
+  getBuddyAchievements,
+  getBuddyComboBonusXp,
   getBuddyLevelProgress,
   getBuddyLevelProgressBar,
   getBuddyMoodBar,
   getBuddyMoodDisplay,
   getBuddyProgress,
   getBuddyPromptTurnBonusXp,
+  getNextBuddyAchievements,
 } from '../../buddy/progression.js'
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
 
@@ -239,7 +249,10 @@ function showUnknownSubcommand(
 
 function formatStatus(companion: Companion): string {
   const mode = getBuddyMode(getGlobalConfig())
-  const progress = getBuddyLevelProgress(companion.progress.xpTotal)
+  const levelProgress = getBuddyLevelProgress(companion.progress.xpTotal)
+  const achievementCount = getBuddyAchievementCount(companion.progress)
+  const earnedAchievements = getBuddyAchievements(companion.progress)
+  const nextAchievements = getNextBuddyAchievements(companion.progress, 2)
   const statBar = (value: number, width = 10) => {
     const filled = Math.max(0, Math.min(width, Math.round((value / 100) * width)))
     return `${'█'.repeat(filled)}${'░'.repeat(width - filled)}`
@@ -255,9 +268,19 @@ function formatStatus(companion: Companion): string {
     `Level ${companion.level} · ${companion.progress.xpTotal} XP`,
     `Mood ${getBuddyMoodDisplay(companion.mood)}`,
     `Emotion ${getBuddyMoodBar(companion.progress)}`,
-    `${getBuddyLevelProgressBar(companion.progress.xpTotal)} ${progress.xpIntoLevel}/${progress.xpNeededThisLevel} XP · ${progress.xpRemaining} to next`,
+    `${getBuddyLevelProgressBar(companion.progress.xpTotal)} ${levelProgress.xpIntoLevel}/${levelProgress.xpNeededThisLevel} XP · ${levelProgress.xpRemaining} to next`,
     `Mode ${formatBuddyMode(mode)}`,
     `Prompt turns ${companion.progress.promptTurns}`,
+    `Productive turns ${companion.progress.productiveTurns} · Work ${formatBuddyWorkDuration(companion.progress.workDurationMs)}`,
+    `Combo x${companion.progress.currentCombo} · Best x${companion.progress.bestCombo}`,
+    `Streak ${companion.progress.currentStreak}d · Best ${companion.progress.bestStreak}d`,
+    `Error feeds ${companion.progress.errorFeeds} · Achievements ${achievementCount}`,
+    earnedAchievements.length > 0
+      ? `Badges ${earnedAchievements.slice(0, 3).map(achievement => achievement.shortLabel).join(', ')}`
+      : 'Badges none yet',
+    nextAchievements.length > 0
+      ? `Next unlock ${nextAchievements.map(achievement => achievement.shortLabel).join(', ')}`
+      : 'Next unlock all earned',
     '─'.repeat(44),
     ...stats,
   ]
@@ -332,6 +355,7 @@ export function awardBuddyPromptTurn(
   usage: {
     input_tokens?: number
     output_tokens?: number
+    productiveTurn?: BuddyProductiveTurnSummary
   },
   now = Date.now(),
 ): Companion | undefined {
@@ -342,17 +366,30 @@ export function awardBuddyPromptTurn(
 
   const currentProgress = getBuddyProgress(stored)
   const currentLevel = getBuddyLevelProgress(currentProgress.xpTotal).level
-  const nextProgress = applyBuddyProgressEvent(currentProgress, {
+  const previousAchievementCount = getBuddyAchievementCount(currentProgress)
+  const previousCombo = currentProgress.currentCombo
+  const promptProgress = applyBuddyProgressEvent(currentProgress, {
     type: 'prompt_turn',
     at: now,
     xp: 10,
   })
 
+  const productiveTurn = usage.productiveTurn
+  const productiveProgress = productiveTurn && productiveTurn.toolSuccesses > 0
+    ? applyBuddyProgressEvent(promptProgress, {
+        type: 'productive_turn',
+        at: now,
+        toolSuccesses: productiveTurn.toolSuccesses,
+        toolDurationMs: productiveTurn.toolDurationMs,
+      })
+    : promptProgress
+
   const tokenUsage = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
   const promptTurnBonusXp = getBuddyPromptTurnBonusXp(tokenUsage)
-  const finalProgress = applyBuddyProgressEvent(nextProgress, {
+  const comboBonusXp = getBuddyComboBonusXp(productiveProgress.currentCombo)
+  const finalProgress = applyBuddyProgressEvent(productiveProgress, {
     type: 'prompt_turn_bonus',
-    xp: promptTurnBonusXp,
+    xp: promptTurnBonusXp + comboBonusXp,
   })
 
   const nextStored = {
@@ -365,18 +402,39 @@ export function awardBuddyPromptTurn(
     companion: nextStored,
   }))
 
-  const awardedXp = 10 + promptTurnBonusXp
+  const awardedXp = 10 + promptTurnBonusXp + comboBonusXp
   const companion = getCompanionFromStored(nextStored)
   const nextLevel = getBuddyLevelProgress(finalProgress.xpTotal).level
+  const nextAchievementCount = getBuddyAchievementCount(finalProgress)
+  const unlockedAchievement =
+    nextAchievementCount > previousAchievementCount
+      ? getBuddyAchievements(finalProgress)[nextAchievementCount - 1]
+      : undefined
+  const comboImproved =
+    productiveProgress.currentCombo >= 2 &&
+    productiveProgress.currentCombo > previousCombo
   setBuddyXpGain(context, awardedXp)
   if (!getGlobalConfig().companionMuted) {
+    const leveledUp = nextLevel > currentLevel
+    const reactionText = leveledUp
+      ? `${companion.name} leveled up to ${nextLevel}!`
+      : unlockedAchievement
+        ? `+${awardedXp} XP · Unlocked ${unlockedAchievement.shortLabel}`
+        : comboImproved
+          ? `+${awardedXp} XP · Combo x${productiveProgress.currentCombo}`
+          : `+${awardedXp} XP`
+    const animationKind = leveledUp
+      ? 'levelUp'
+      : unlockedAchievement
+        ? 'achievement'
+        : comboImproved
+          ? 'combo'
+          : 'speak'
     setCompanionReaction(
       context,
-      nextLevel > currentLevel
-        ? `${companion.name} leveled up to ${nextLevel}!`
-        : `+${awardedXp} XP`,
+      reactionText,
       false,
-      'speak',
+      animationKind,
     )
   }
 

@@ -58,10 +58,23 @@ const mockCompanion = {
   progress: {
     xpTotal: 10,
     promptTurns: 2,
+    productiveTurns: 3,
+    workDurationMs: 35 * 60 * 1000,
     errorFeeds: 0,
+    currentStreak: 4,
+    bestStreak: 4,
+    currentCombo: 2,
+    bestCombo: 3,
+    highestStatMilestone: 0,
+    statBonuses: undefined,
+    lastPromptAt: undefined,
+    lastWorkAt: 1,
+    lastComboAt: 1,
+    lastStreakDay: 1,
     recentPromptTurnAts: [],
+    recentWorkAts: [1, 2, 3],
     recentErrorFeedKeys: [],
-    version: 2,
+    version: 4,
   },
   level: 1,
   mood: 'content' as const,
@@ -118,6 +131,12 @@ test('renders buddy actions menu', async () => {
   expect(output).toContain('Mode: Balanced')
   expect(output).toContain('Species: Owl')
   expect(output).toContain('Prompt turns: 2')
+  expect(output).toContain('Productive turns: 3')
+  expect(output).toContain('Work time: 35m')
+  expect(output).toContain('Combo: x2 (best x3)')
+  expect(output).toContain('Streak: 4d (best 4d)')
+  expect(output).toContain('Achievements: 4')
+  expect(output).toContain('Badges: First work, x2 combo, 3d streak')
   expect(output).toContain('Actions')
   expect(output).not.toContain('Pet')
   expect(output).not.toContain('Status')

@@ -2,6 +2,7 @@ import * as React from 'react'
 import { getCompanion } from '../../buddy/companion.js'
 import { isBuddyEnabled } from '../../buddy/feature.js'
 import {
+  getBuddyAchievementCount,
   getBuddyLevelProgress,
   getBuddyLevelProgressBar,
 } from '../../buddy/progression.js'
@@ -24,7 +25,23 @@ export function getBuddyProgressBylineText(width = 6): string | null {
   }
 
   const progress = getBuddyLevelProgress(companion.progress.xpTotal)
-  return `Buddy L${progress.level} · ${getBuddyLevelProgressBar(companion.progress.xpTotal, width)} ${progress.xpIntoLevel}/${progress.xpNeededThisLevel} XP`
+  const segments = [
+    `Buddy L${progress.level}`,
+    `${getBuddyLevelProgressBar(companion.progress.xpTotal, width)} ${progress.xpIntoLevel}/${progress.xpNeededThisLevel} XP`,
+  ]
+
+  if (companion.progress.currentCombo >= 2) {
+    segments.push(`x${companion.progress.currentCombo}`)
+  }
+  if (companion.progress.currentStreak >= 1) {
+    segments.push(`${companion.progress.currentStreak}d`)
+  }
+  const achievementCount = getBuddyAchievementCount(companion.progress)
+  if (achievementCount > 0 && width >= 8) {
+    segments.push(`${achievementCount}★`)
+  }
+
+  return segments.join(' · ')
 }
 
 export function BuddyProgressByline({

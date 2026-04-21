@@ -1,5 +1,6 @@
 import type { Notification } from 'src/context/notifications.js'
 import type { TodoList } from 'src/utils/todo/types.js'
+import type { BuddyProductiveTurnSummary } from '../buddy/types.js'
 import type { BridgePermissionCallbacks } from '../bridge/bridgePermissionCallbacks.js'
 import type { Command } from '../commands.js'
 import type { ChannelPermissionCallbacks } from '../services/mcp/channelPermissions.js'
@@ -169,11 +170,13 @@ export type AppState = DeepImmutable<{
   companionReaction?: string
   // Latest XP gain awarded to buddy for footer display.
   lastBuddyXpGain?: number
+  // Current turn's productive tool summary for local buddy progression.
+  buddyProductiveTurn?: BuddyProductiveTurnSummary
   // Timestamp of last /buddy pet — CompanionSprite renders hearts while recent
   companionPetAt?: number
   // Short-lived visual state used to prioritize companion animations.
   companionAnimation?: {
-    kind: 'idle' | 'pet' | 'speak' | 'errorFeed'
+    kind: 'idle' | 'pet' | 'speak' | 'errorFeed' | 'combo' | 'achievement' | 'levelUp'
     at: number
   }
   // TODO (ashwin): see if we can use utility-types DeepReadonly for this

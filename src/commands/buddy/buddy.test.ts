@@ -1,4 +1,5 @@
 import { afterEach, expect, mock, test } from 'bun:test'
+import * as actualCrypto from 'crypto'
 
 import type { StoredCompanion } from '../../buddy/types.js'
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js'
@@ -23,19 +24,29 @@ function installBuddyMocks() {
   mock.module('../../utils/config.js', () => configMock)
   mock.module('../../utils/config.ts', () => configMock)
 
-  mock.module('crypto', () => ({
+  const cryptoMock = () => ({
+    ...actualCrypto,
     randomUUID: () => `uuid-${++uuidCounter}`,
-  }))
+  })
+  mock.module('crypto', cryptoMock)
+  mock.module('node:crypto', cryptoMock)
 }
 
 async function importFreshBuddyModule() {
   return import(`./buddy.tsx?ts=${Date.now()}-${Math.random()}`)
 }
 
-function createContext(): LocalJSXCommandContext {
+function createContext() {
+  let appState = {} as Record<string, unknown>
   return {
-    setAppState: updater => updater({} as never),
-  } as LocalJSXCommandContext
+    context: {
+      setAppState: updater => {
+        appState = updater(appState as never) as Record<string, unknown>
+        return appState as never
+      },
+    } as LocalJSXCommandContext,
+    getAppState: () => appState,
+  }
 }
 
 function createOnDoneSpy() {
@@ -62,27 +73,36 @@ test('hatch and status use the same reconstructed buddy', async () => {
   const buddyModule = await importFreshBuddyModule()
   const first = createOnDoneSpy()
 
-  await buddyModule.call(first.onDone, createContext())
+  const firstContext = createContext()
+  await buddyModule.call(first.onDone, firstContext.context)
 
   expect(mockConfig.companion?.seed).toBe('user-1:uuid-1')
   expect(mockConfig.companionMuted).toBe(false)
   expect(mockConfig.companion?.progress).toEqual({
     xpTotal: 0,
     promptTurns: 0,
+    productiveTurns: 0,
+    workDurationMs: 0,
     errorFeeds: 0,
-    currentStreak: 1,
-    bestStreak: 1,
+    currentStreak: 0,
+    bestStreak: 0,
+    currentCombo: 0,
+    bestCombo: 0,
     highestStatMilestone: 0,
     statBonuses: undefined,
-    lastPromptAt: expect.any(Number),
-    recentPromptTurnAts: [expect.any(Number)],
+    lastPromptAt: undefined,
+    lastWorkAt: undefined,
+    lastComboAt: undefined,
+    lastStreakDay: undefined,
+    recentPromptTurnAts: [],
+    recentWorkAts: [],
     recentErrorFeedKeys: [],
-    version: 3,
+    version: 4,
   })
   expect(first.calls[0]?.result).toContain('is now your buddy')
 
   const second = createOnDoneSpy()
-  await buddyModule.call(second.onDone, createContext(), 'status')
+  await buddyModule.call(second.onDone, createContext().context, 'status')
 
   expect(second.calls[0]?.result).toContain(mockConfig.companion?.name ?? '')
   expect(second.calls[0]?.result).toContain(mockConfig.companion?.personality ?? '')
@@ -90,6 +110,8 @@ test('hatch and status use the same reconstructed buddy', async () => {
   expect(second.calls[0]?.result).toContain('0 XP')
   expect(second.calls[0]?.result).toContain('Mode Balanced')
   expect(second.calls[0]?.result).toContain('Prompt turns 0')
+  expect(second.calls[0]?.result).toContain('Productive turns 0 · Work 0m')
+  expect(second.calls[0]?.result).toContain('Achievements 0')
   expect(second.calls[0]?.result).toContain('0/20 XP · 20 to next')
 })
 
@@ -98,7 +120,7 @@ test('mode command updates buddy mode', async () => {
   const buddyModule = await importFreshBuddyModule()
   const done = createOnDoneSpy()
 
-  await buddyModule.call(done.onDone, createContext(), 'mode minimal')
+  await buddyModule.call(done.onDone, createContext().context, 'mode minimal')
 
   expect(mockConfig.companionMode).toBe('minimal')
   expect(done.calls[0]?.result).toContain('Minimal')
@@ -109,7 +131,7 @@ test('rename requires an existing buddy', async () => {
   const buddyModule = await importFreshBuddyModule()
   const done = createOnDoneSpy()
 
-  await buddyModule.call(done.onDone, createContext(), 'rename Moss')
+  await buddyModule.call(done.onDone, createContext().context, 'rename Moss')
 
   expect(done.calls[0]?.result).toBe('No buddy hatched yet. Run /buddy to hatch one.')
 })
@@ -129,22 +151,30 @@ test('reset replaces the buddy seed and preserves mute state', async () => {
   const buddyModule = await importFreshBuddyModule()
   const done = createOnDoneSpy()
 
-  await buddyModule.call(done.onDone, createContext(), 'reset')
+  await buddyModule.call(done.onDone, createContext().context, 'reset')
 
   expect(mockConfig.companion?.seed).toBe('user-1:uuid-1')
   expect(mockConfig.companionMuted).toBe(true)
   expect(mockConfig.companion?.progress).toEqual({
     xpTotal: 0,
     promptTurns: 0,
+    productiveTurns: 0,
+    workDurationMs: 0,
     errorFeeds: 0,
-    currentStreak: 1,
-    bestStreak: 1,
+    currentStreak: 0,
+    bestStreak: 0,
+    currentCombo: 0,
+    bestCombo: 0,
     highestStatMilestone: 0,
     statBonuses: undefined,
-    lastPromptAt: expect.any(Number),
-    recentPromptTurnAts: [expect.any(Number)],
+    lastPromptAt: undefined,
+    lastWorkAt: undefined,
+    lastComboAt: undefined,
+    lastStreakDay: undefined,
+    recentPromptTurnAts: [],
+    recentWorkAts: [],
     recentErrorFeedKeys: [],
-    version: 3,
+    version: 4,
   })
   expect(done.calls[0]?.result).toContain('is now your buddy')
 })
@@ -164,7 +194,7 @@ test('edit personality updates the stored buddy personality', async () => {
 
   await buddyModule.call(
     done.onDone,
-    createContext(),
+    createContext().context,
     'edit personality brave and curious',
   )
 
@@ -182,31 +212,155 @@ test('awardBuddyPromptTurn scales XP with token usage', async () => {
       progress: {
         xpTotal: 0,
         promptTurns: 0,
+        productiveTurns: 0,
+        workDurationMs: 0,
         errorFeeds: 0,
         currentStreak: 0,
         bestStreak: 0,
+        currentCombo: 0,
+        bestCombo: 0,
         highestStatMilestone: 0,
         statBonuses: undefined,
+        lastPromptAt: undefined,
+        lastWorkAt: undefined,
+        lastComboAt: undefined,
+        lastStreakDay: undefined,
         recentPromptTurnAts: [],
+        recentWorkAts: [],
         recentErrorFeedKeys: [],
-        version: 3,
+        version: 4,
       },
     },
   }
   installBuddyMocks()
   const buddyModule = await importFreshBuddyModule()
 
+  const promptContext = createContext()
   buddyModule.awardBuddyPromptTurn(
-    createContext(),
+    promptContext.context,
     {
       input_tokens: 2000,
       output_tokens: 4000,
+      productiveTurn: {
+        toolSuccesses: 1,
+        toolDurationMs: 60_000,
+      },
     },
     123,
   )
 
   expect(mockConfig.companion?.progress?.xpTotal).toBe(13)
   expect(mockConfig.companion?.progress?.promptTurns).toBe(1)
+  expect(mockConfig.companion?.progress?.productiveTurns).toBe(1)
+  expect(mockConfig.companion?.progress?.currentCombo).toBe(1)
   expect(mockConfig.companion?.progress?.lastPromptAt).toBe(123)
   expect(mockConfig.companion?.progress?.recentPromptTurnAts).toEqual([123])
+  expect(promptContext.getAppState().companionAnimation).toEqual({
+    kind: 'achievement',
+    at: expect.any(Number),
+  })
+})
+
+test('awardBuddyPromptTurn uses levelUp animation when the turn levels up the buddy', async () => {
+  mockConfig = {
+    companion: {
+      seed: 'seed-1',
+      name: 'Patch',
+      personality: 'Calm under pressure and fond of clean diffs.',
+      hatchedAt: 1,
+      progress: {
+        xpTotal: 19,
+        promptTurns: 0,
+        productiveTurns: 0,
+        workDurationMs: 0,
+        errorFeeds: 0,
+        currentStreak: 0,
+        bestStreak: 0,
+        currentCombo: 0,
+        bestCombo: 0,
+        highestStatMilestone: 0,
+        statBonuses: undefined,
+        lastPromptAt: undefined,
+        lastWorkAt: undefined,
+        lastComboAt: undefined,
+        lastStreakDay: undefined,
+        recentPromptTurnAts: [],
+        recentWorkAts: [],
+        recentErrorFeedKeys: [],
+        version: 4,
+      },
+    },
+  }
+  installBuddyMocks()
+  const buddyModule = await importFreshBuddyModule()
+  const levelContext = createContext()
+
+  buddyModule.awardBuddyPromptTurn(
+    levelContext.context,
+    {
+      input_tokens: 0,
+      output_tokens: 0,
+    },
+    123,
+  )
+
+  expect(mockConfig.companion?.progress?.xpTotal).toBe(29)
+  expect(levelContext.getAppState().companionAnimation).toEqual({
+    kind: 'levelUp',
+    at: expect.any(Number),
+  })
+})
+
+test('awardBuddyPromptTurn celebrates combo improvements', async () => {
+  mockConfig = {
+    companion: {
+      seed: 'seed-1',
+      name: 'Patch',
+      personality: 'Calm under pressure and fond of clean diffs.',
+      hatchedAt: 1,
+      progress: {
+        xpTotal: 5,
+        promptTurns: 1,
+        productiveTurns: 1,
+        workDurationMs: 60_000,
+        errorFeeds: 0,
+        currentStreak: 1,
+        bestStreak: 1,
+        currentCombo: 1,
+        bestCombo: 1,
+        highestStatMilestone: 0,
+        statBonuses: undefined,
+        lastPromptAt: 100,
+        lastWorkAt: 100,
+        lastComboAt: 100,
+        lastStreakDay: 0,
+        recentPromptTurnAts: [100],
+        recentWorkAts: [100],
+        recentErrorFeedKeys: [],
+        version: 4,
+      },
+    },
+  }
+  installBuddyMocks()
+  const buddyModule = await importFreshBuddyModule()
+  const comboContext = createContext()
+
+  buddyModule.awardBuddyPromptTurn(
+    comboContext.context,
+    {
+      input_tokens: 0,
+      output_tokens: 0,
+      productiveTurn: {
+        toolSuccesses: 1,
+        toolDurationMs: 30_000,
+      },
+    },
+    100 + 5 * 60 * 1000,
+  )
+
+  expect(mockConfig.companion?.progress?.currentCombo).toBe(2)
+  expect(comboContext.getAppState().companionAnimation).toEqual({
+    kind: 'achievement',
+    at: expect.any(Number),
+  })
 })

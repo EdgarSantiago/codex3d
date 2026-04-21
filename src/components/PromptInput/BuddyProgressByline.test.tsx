@@ -51,18 +51,7 @@ function resetBuddyProgressMocks() {
 }
 
 function renderBuddyText() {
-  return 'Buddy L1 · ███░░░ 10/20 XP'
-}
-
-function createNodeCryptoMock() {
-  return {
-    randomUUID: () => 'uuid-1',
-    createHash: () => ({
-      update: () => ({
-        digest: () => 'hash',
-      }),
-    }),
-  }
+  return 'Buddy L1 · ███░░░ 10/20 XP · 3d'
 }
 
 function createConfigMock() {
@@ -93,13 +82,23 @@ const mockCompanion = {
   progress: {
     xpTotal: 10,
     promptTurns: 2,
+    productiveTurns: 1,
+    workDurationMs: 120000,
     errorFeeds: 0,
-    currentStreak: 1,
-    bestStreak: 1,
+    currentStreak: 3,
+    bestStreak: 3,
+    currentCombo: 1,
+    bestCombo: 2,
     highestStatMilestone: 0,
+    lastPromptAt: undefined,
+    lastWorkAt: 1,
+    lastComboAt: 1,
+    lastStreakDay: 1,
+    statBonuses: undefined,
     recentPromptTurnAts: [],
+    recentWorkAts: [1],
     recentErrorFeedKeys: [],
-    version: 3,
+    version: 4,
   },
   level: 1,
   mood: 'content' as const,
@@ -119,7 +118,6 @@ function installBuddyProgressMocks() {
   }))
   mock.module('../../utils/config.js', () => configMock)
   mock.module('../../utils/config.ts', () => configMock)
-  mock.module('node:crypto', createNodeCryptoMock)
 }
 
 afterEach(() => {
@@ -144,6 +142,13 @@ test('ignores recent XP gain in the footer text helper', async () => {
   const { getBuddyProgressBylineText } = await importFreshBuddyProgressByline()
 
   expect(getBuddyProgressBylineText(6)).toBe(renderBuddyText())
+})
+
+test('drops achievement segment on tighter widths', async () => {
+  installBuddyProgressMocks()
+  const { getBuddyProgressBylineText } = await importFreshBuddyProgressByline()
+
+  expect(getBuddyProgressBylineText(7)).toBe('Buddy L1 · ████░░░ 10/20 XP · 3d')
 })
 
 test('returns nothing when buddy is muted', async () => {

@@ -1,6 +1,11 @@
 import * as React from 'react'
 import { getCompanion } from '../../buddy/companion.js'
-import { getBuddyMoodBar } from '../../buddy/progression.js'
+import {
+  formatBuddyWorkDuration,
+  getBuddyAchievementCount,
+  getBuddyAchievements,
+  getBuddyMoodBar,
+} from '../../buddy/progression.js'
 import {
   formatBuddyMode,
   getBuddyMode,
@@ -95,6 +100,7 @@ export function BuddyMenuDialog({
     </Box>
   )
 
+  const earnedAchievements = getBuddyAchievements(companion.progress)
   const summaryPanel = (
     <Box flexDirection="column" marginBottom={1} paddingX={1}>
       {summaryHeader}
@@ -103,6 +109,15 @@ export function BuddyMenuDialog({
         value={<Text color={rarityColor(companion.rarity)}>{titleCase(companion.species)}</Text>}
       />
       <SummaryRow label="Prompt turns:" value={companion.progress.promptTurns} />
+      <SummaryRow label="Productive turns:" value={companion.progress.productiveTurns} />
+      <SummaryRow label="Work time:" value={formatBuddyWorkDuration(companion.progress.workDurationMs)} />
+      <SummaryRow label="Combo:" value={`x${companion.progress.currentCombo} (best x${companion.progress.bestCombo})`} />
+      <SummaryRow label="Streak:" value={`${companion.progress.currentStreak}d (best ${companion.progress.bestStreak}d)`} />
+      <SummaryRow label="Achievements:" value={getBuddyAchievementCount(companion.progress)} />
+      <SummaryRow
+        label="Badges:"
+        value={earnedAchievements.length > 0 ? earnedAchievements.slice(0, 3).map(a => a.shortLabel).join(', ') : 'None yet'}
+      />
       <SummaryRow label="Mode:" value={formatBuddyMode(currentMode)} />
     </Box>
   )

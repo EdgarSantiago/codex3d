@@ -1255,6 +1255,13 @@ async function checkPermissionsAndCallTool(
     )
     const durationMs = Date.now() - startTime
     addToToolDuration(durationMs)
+    toolUseContext.setAppState(prev => ({
+      ...prev,
+      buddyProductiveTurn: {
+        toolSuccesses: (prev.buddyProductiveTurn?.toolSuccesses ?? 0) + 1,
+        toolDurationMs: (prev.buddyProductiveTurn?.toolDurationMs ?? 0) + durationMs,
+      },
+    }))
 
     // Log tool content/output as span event if enabled
     if (result.data && typeof result.data === 'object') {

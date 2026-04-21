@@ -7,13 +7,18 @@ Concise follow-up roadmap for the buddy system.
 Already implemented:
 - single active buddy management
 - persistent XP and mood progression
+- productivity-driven progression (productive turns, work time, combos, streaks)
+- passive achievement unlocking from local progress
 - token-aware prompt-turn XP (base XP plus token-scaled bonus)
 - error feeding with dedupe
 - `/buddy status` level and next-level progress surfacing
 - compact buddy XP progress in the prompt footer
+- richer buddy menu/status productivity dashboard
 - mood-aware cyber commentary
 - transient animation-state framework
-- dedicated error-fed animation state
+- dedicated event animation states for `errorFeed`, `combo`, `achievement`, and `levelUp`
+- game-like ASCII burst art for milestone moments
+- RPG-style special-event speech bubble variants
 - buddy modes (`minimal`, `balanced`, `expressive`)
 - focused buddy test coverage
 - footer and progression test coverage for buddy progress UI
@@ -44,9 +49,12 @@ Why:
 - progression now exists, but it needs stronger payoff
 - this connects XP, mood, commentary, and animation into something more rewarding
 
-Good additions:
+Already landed:
 - level-up reaction bubble
 - level-up animation state
+- dedicated level-up burst art and speech bubble styling
+
+Still open:
 - optional cosmetic unlocks tied to level thresholds
 
 Likely files:
@@ -106,11 +114,13 @@ Mode rule:
 - purely visual animation work can remain active in all modes
 
 ### 5. Local achievements / badges
-Ideas:
-- “first error fed”
-- “10 prompt turns”
-- “first level up”
-- “streak starter” badge stored locally
+Already landed:
+- passive local achievements derived from progress
+- badge surfacing in `/buddy status`
+- achievement-triggered animation state and speech bubble styling
+
+Still open:
+- expand the achievement set further if needed
 
 Likely files:
 - `src/buddy/types.ts`
@@ -139,6 +149,8 @@ Likely files:
 Already landed:
 - next level threshold in `/buddy status`
 - compact buddy XP progress in the prompt footer
+- productivity dashboard in `/buddy status`
+- combo / streak / badge surfacing in local buddy UI
 
 Remaining ideas:
 - show recent local activity summary
