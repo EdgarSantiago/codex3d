@@ -33,6 +33,7 @@ type BuddyMenuView = 'actions' | 'mode' | 'rename' | 'personality'
 type BuddyMenuValue =
   | 'pet'
   | 'status'
+  | 'resume'
   | 'mode'
   | 'rename'
   | 'personality'
@@ -82,7 +83,8 @@ export function BuddyMenuDialog({
   }
 
   const summaryHeader = (
-    <Box flexDirection="column" marginBottom={1}>
+    <Box flexDirection="column" marginBottom={1} paddingX={1}>
+      <Text dimColor>Companion dossier</Text>
       <Text bold color={rarityColor(companion.rarity)}>
         {companion.name} the {titleCase(companion.rarity)} {titleCase(companion.species)}{' '}
         <Text color={rarityColor(companion.rarity)}>{RARITY_STARS[companion.rarity]}</Text>
@@ -102,25 +104,34 @@ export function BuddyMenuDialog({
 
   const earnedAchievements = getBuddyAchievements(companion.progress)
   const summaryPanel = (
-    <Box flexDirection="column" marginBottom={1} paddingX={1}>
+    <Box flexDirection="column" marginBottom={1}>
       {summaryHeader}
-      <SummaryRow
-        label="Species:"
-        value={<Text color={rarityColor(companion.rarity)}>{titleCase(companion.species)}</Text>}
-      />
-      <SummaryRow label="Prompt turns:" value={companion.progress.promptTurns} />
-      <SummaryRow label="Productive turns:" value={companion.progress.productiveTurns} />
-      <SummaryRow label="Work time:" value={formatBuddyWorkDuration(companion.progress.workDurationMs)} />
-      <SummaryRow label="Combo:" value={`x${companion.progress.currentCombo} (best x${companion.progress.bestCombo})`} />
-      <SummaryRow label="Streak:" value={`${companion.progress.currentStreak}d (best ${companion.progress.bestStreak}d)`} />
-      <SummaryRow label="Achievements:" value={getBuddyAchievementCount(companion.progress)} />
-      <SummaryRow
-        label="Badges:"
-        value={earnedAchievements.length > 0 ? earnedAchievements.slice(0, 3).map(a => a.shortLabel).join(', ') : 'None yet'}
-      />
-      <SummaryRow label="Mode:" value={formatBuddyMode(currentMode)} />
+      <Box flexDirection="column" paddingX={1}>
+        <Text dimColor>Character sheet</Text>
+        <SummaryRow
+          label="Species:"
+          value={<Text color={rarityColor(companion.rarity)}>{titleCase(companion.species)}</Text>}
+        />
+        <SummaryRow label="Prompt turns:" value={companion.progress.promptTurns} />
+        <SummaryRow label="Productive turns:" value={companion.progress.productiveTurns} />
+        <SummaryRow label="Work time:" value={formatBuddyWorkDuration(companion.progress.workDurationMs)} />
+        <SummaryRow label="Combo:" value={`x${companion.progress.currentCombo} (best x${companion.progress.bestCombo})`} />
+        <SummaryRow label="Streak:" value={`${companion.progress.currentStreak}d (best ${companion.progress.bestStreak}d)`} />
+        <SummaryRow label="Achievements:" value={getBuddyAchievementCount(companion.progress)} />
+        <SummaryRow
+          label="Badges:"
+          value={earnedAchievements.length > 0 ? earnedAchievements.slice(0, 3).map(a => a.shortLabel).join(', ') : 'None yet'}
+        />
+        <SummaryRow label="Mode:" value={formatBuddyMode(currentMode)} />
+      </Box>
     </Box>
   )
+
+  const actionHeading = view === 'actions' ? 'Quest board' : 'Training grounds'
+  const actionSubheading =
+    view === 'actions'
+      ? `${companion.name} is ready. Pick the next move.`
+      : 'Choose the next command for your companion.'
 
   function submit(command: string): void {
     onDone()
@@ -134,6 +145,9 @@ export function BuddyMenuDialog({
         return
       case 'status':
         submit('/buddy status')
+        return
+      case 'resume':
+        submit('/resume')
         return
       case 'mode':
         setView('mode')
@@ -278,37 +292,42 @@ export function BuddyMenuDialog({
         {
           label: 'Pet',
           value: 'pet',
-          description: 'Trigger a quick companion reaction without leaving the prompt.',
+          description: 'Give your companion a quick morale boost without leaving the prompt.',
         },
         {
           label: 'Status',
           value: 'status',
-          description: 'Print the full buddy status readout into the transcript.',
+          description: 'Show the full adventure log and companion stats in the transcript.',
+        },
+        {
+          label: 'Resume',
+          value: 'resume',
+          description: 'Open the recent sessions board and jump back into an earlier quest.',
         },
         {
           label: 'Mode',
           value: 'mode',
-          description: `${formatBuddyMode(currentMode)} is active right now.`,
+          description: `${formatBuddyMode(currentMode)} stance is active right now.`,
         },
         {
           label: 'Rename',
           value: 'rename',
-          description: 'Update your buddy name from inside the menu.',
+          description: 'Give your companion a new legendary name.',
         },
         {
           label: 'Edit personality',
           value: 'personality',
-          description: 'Refine the tone and flavor text your buddy uses.',
+          description: 'Rewrite the flavor text your buddy uses in the terminal.',
         },
         {
           label: 'Reroll',
           value: 'reroll',
-          description: 'Hatch a fresh buddy with a new look and identity.',
+          description: 'Hatch a fresh buddy with a new look and origin story.',
         },
         {
           label: 'Mute',
           value: 'mute',
-          description: 'Hide buddy reactions until you explicitly unmute them.',
+          description: 'Send your buddy offstage until you call them back.',
         },
       ]
       onChange = handleActions
@@ -328,8 +347,9 @@ export function BuddyMenuDialog({
     >
       <Box flexDirection="column" paddingY={1}>
         {summary}
-        <Box marginTop={1} paddingX={2}>
-          <Text dimColor>Actions</Text>
+        <Box marginTop={1} paddingX={2} flexDirection="column">
+          <Text bold>{actionHeading}</Text>
+          <Text dimColor>{actionSubheading}</Text>
         </Box>
         <Box paddingX={2} paddingBottom={1}>
           <Select

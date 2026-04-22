@@ -2,6 +2,12 @@ import { afterEach, expect, mock, test } from 'bun:test'
 import React from 'react'
 
 let renderToStringFn: typeof import('../../utils/staticRender.tsx').renderToString
+let latestSelectProps:
+  | {
+      options: Array<{ label: React.ReactNode; value: string; description?: string }>
+      onChange: (value: string) => void
+    }
+  | undefined
 
 function installBundleMock() {
   const bundleMock = {
@@ -81,6 +87,8 @@ const mockCompanion = {
 }
 
 function installBuddyMenuMocks() {
+  latestSelectProps = undefined
+
   mock.module('../../buddy/companion.js', () => ({
     getCompanion: () => mockCompanion,
   }))
@@ -99,26 +107,38 @@ function installBuddyMenuMocks() {
     ),
   }))
   mock.module('../CustomSelect/select.js', () => ({
-    Select: ({ options }: { options: Array<{ label: React.ReactNode; description?: string }> }) => (
-      <>
-        {options.map((option, index) => (
-          <div key={index}>
-            <div>{option.label}</div>
-            {option.description ? <div>{option.description}</div> : null}
-          </div>
-        ))}
-      </>
-    ),
+    Select: ({ options, onChange }: { options: Array<{ label: React.ReactNode; value: string; description?: string }>; onChange: (value: string) => void }) => {
+      latestSelectProps = { options, onChange }
+      return (
+        <>
+          {options.map((option, index) => (
+            <div key={index}>
+              <div>{option.label}</div>
+              {option.description ? <div>{option.description}</div> : null}
+            </div>
+          ))}
+        </>
+      )
+    },
   }))
+}
+
+function currentOptionLabels(): string[] {
+  return latestSelectProps?.options.map(option => String(option.label)) ?? []
+}
+
+function currentOptionDescriptions(): string[] {
+  return latestSelectProps?.options.map(option => option.description ?? '') ?? []
 }
 
 afterEach(() => {
   mock.restore()
   mockConfig.companionMode = 'balanced'
   mockConfig.companionMuted = false
+  latestSelectProps = undefined
 })
 
-test('renders buddy actions menu', async () => {
+test('renders buddy actions menu with resume option after status', async () => {
   installBuddyMenuMocks()
   const { BuddyMenuDialog } = await importFreshBuddyMenuDialog()
 
@@ -127,7 +147,9 @@ test('renders buddy actions menu', async () => {
     100,
   )
 
+  expect(output).toContain('Companion dossier')
   expect(output).toContain('Patch the Rare Owl ★★★')
+  expect(output).toContain('Character sheet')
   expect(output).toContain('Mode: Balanced')
   expect(output).toContain('Species: Owl')
   expect(output).toContain('Prompt turns: 2')
@@ -137,11 +159,39 @@ test('renders buddy actions menu', async () => {
   expect(output).toContain('Streak: 4d (best 4d)')
   expect(output).toContain('Achievements: 4')
   expect(output).toContain('Badges: First work, x2 combo, 3d streak')
-  expect(output).toContain('Actions')
-  expect(output).not.toContain('Pet')
-  expect(output).not.toContain('Status')
-  expect(output).not.toContain('Rename')
-  expect(output).not.toContain('Mute')
+  expect(output).toContain('Quest board')
+  expect(output).toContain('Patch is ready. Pick the next move.')
+
+  expect(currentOptionLabels()).toEqual([
+    'Pet',
+    'Status',
+    'Resume',
+    'Mode',
+    'Rename',
+    'Edit personality',
+    'Reroll',
+    'Mute',
+  ])
+  expect(currentOptionLabels().indexOf('Status')).toBeLessThan(currentOptionLabels().indexOf('Resume'))
+  expect(currentOptionLabels().indexOf('Resume')).toBeLessThan(currentOptionLabels().indexOf('Mode'))
+  expect(currentOptionDescriptions()).toContain('Open the recent sessions board and jump back into an earlier quest.')
+})
+
+test('submits /resume from the buddy menu', async () => {
+  installBuddyMenuMocks()
+  const onDone = mock()
+  const onSubmitCommand = mock()
+  const { BuddyMenuDialog } = await importFreshBuddyMenuDialog()
+
+  await renderNode(
+    <BuddyMenuDialog onDone={onDone} onSubmitCommand={onSubmitCommand} />,
+    100,
+  )
+
+  latestSelectProps?.onChange('resume')
+
+  expect(onDone).toHaveBeenCalledTimes(1)
+  expect(onSubmitCommand).toHaveBeenCalledWith('/resume')
 })
 
 test('does not render when buddy is muted', async () => {
