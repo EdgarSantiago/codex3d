@@ -67,6 +67,8 @@ import {
   normalizeToolArguments,
   hasToolFieldMapping,
 } from './toolArgumentNormalization.js'
+import { logApiCallStart, logApiCallEnd } from '../../utils/requestLogging.js'
+import { createStreamState, processStreamChunk, getStreamStats } from '../../utils/streamingOptimizer.js'
 
 type SecretValueSource = Partial<{
   OPENAI_API_KEY: string
@@ -216,6 +218,14 @@ interface OpenAIMessage {
   }>
   tool_call_id?: string
   name?: string
+  /**
+   * Per-assistant-message chain-of-thought, attached when echoing an
+   * assistant message back to providers that require it (notably Moonshot:
+   * "thinking is enabled but reasoning_content is missing in assistant
+   * tool call message at index N" 400). Derived from the Anthropic thinking
+   * block captured when the original response was translated.
+   */
+  reasoning_content?: string
 }
 
 interface OpenAITool {
@@ -383,7 +393,9 @@ function convertMessages(
     content?: unknown
   }>,
   system: unknown,
+  options?: { preserveReasoningContent?: boolean },
 ): OpenAIMessage[] {
+  const preserveReasoningContent = options?.preserveReasoningContent === true
   const result: OpenAIMessage[] = []
   const knownToolCallIds = new Set<string>()
 
@@ -484,6 +496,21 @@ function convertMessages(
                 ? c.map((p: { text?: string }) => p.text ?? '').join('')
                 : ''
           })(),
+        }
+
+        // Providers that validate reasoning continuity (Moonshot: "thinking
+        // is enabled but reasoning_content is missing in assistant tool call
+        // message at index N" 400) need the original chain-of-thought echoed
+        // back on each assistant message that carries a tool_call. We kept
+        // the thinking block on the Anthropic side; re-attach it here as the
+        // `reasoning_content` field on the outgoing OpenAI-shaped message.
+        // Gated per-provider because other endpoints either ignore the field
+        // (harmless) or strict-reject unknown fields (harmful).
+        if (preserveReasoningContent) {
+          const thinkingText = (thinkingBlock as { thinking?: string } | undefined)?.thinking
+          if (typeof thinkingText === 'string' && thinkingText.trim().length > 0) {
+            assistantMsg.reasoning_content = thinkingText
+          }
         }
 
         if (toolUses.length > 0) {
@@ -857,6 +884,7 @@ async function* openaiStreamToAnthropic(
   let lastStopReason: 'tool_use' | 'max_tokens' | 'end_turn' | null = null
   let hasEmittedFinalUsage = false
   let hasProcessedFinishReason = false
+  const streamState = createStreamState()
 
   // Emit message_start
   yield {
@@ -1020,6 +1048,7 @@ async function* openaiStreamToAnthropic(
               delta: { type: 'text_delta', text: visible },
             }
           }
+          processStreamChunk(streamState, delta.content)
         }
 
         // Tool calls
@@ -1039,6 +1068,7 @@ async function* openaiStreamToAnthropic(
               const toolBlockIndex = contentBlockIndex
               const initialArguments = tc.function.arguments ?? ''
               const normalizeAtStop = hasToolFieldMapping(tc.function.name)
+              processStreamChunk(streamState, tc.function.arguments ?? '')
               activeToolCalls.set(tc.index, {
                 id: tc.id,
                 name: tc.function.name,
@@ -1234,6 +1264,20 @@ async function* openaiStreamToAnthropic(
     }
   } finally {
     reader.releaseLock()
+  }
+
+  const stats = getStreamStats(streamState)
+  if (stats.totalChunks > 0) {
+    logForDebugging(
+      JSON.stringify({
+        type: 'stream_stats',
+        model,
+        total_chunks: stats.totalChunks,
+        first_token_ms: stats.firstTokenMs,
+        duration_ms: stats.durationMs,
+      }),
+      { level: 'debug' },
+    )
   }
 
   yield { type: 'message_stop' }
@@ -1441,7 +1485,12 @@ class OpenAIShimMessages {
       }>,
       request.resolvedModel,
     )
-    const openaiMessages = convertMessages(compressedMessages, params.system)
+    const openaiMessages = convertMessages(compressedMessages, params.system, {
+      // Moonshot requires every assistant tool-call message to carry
+      // reasoning_content when its thinking feature is active. Echo it back
+      // from the thinking block we captured on the inbound response.
+      preserveReasoningContent: isMoonshotBaseUrl(request.baseUrl),
+    })
 
     const body: Record<string, unknown> = {
       model: request.resolvedModel,
@@ -1715,6 +1764,12 @@ class OpenAIShimMessages {
     }
 
     let response: Response | undefined
+    const provider = request.baseUrl.includes('nvidia') ? 'nvidia-nim'
+      : request.baseUrl.includes('minimax') ? 'minimax'
+      : request.baseUrl.includes('localhost:11434') || request.baseUrl.includes('localhost:11435') ? 'ollama'
+      : request.baseUrl.includes('anthropic') ? 'anthropic'
+      : 'openai'
+    const { correlationId, startTime } = logApiCallStart(provider, request.resolvedModel)
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         response = await fetchWithProxyRetry(
@@ -1752,6 +1807,20 @@ class OpenAIShimMessages {
       }
 
       if (response.ok) {
+        let tokensIn = 0
+        let tokensOut = 0
+        // Skip clone() for streaming responses - it blocks until full body is received,
+        // defeating the purpose of streaming. Usage data is already sent via
+        // stream_options: { include_usage: true } and can be extracted from the stream.
+        if (!params.stream) {
+          try {
+            const clone = response.clone()
+            const data = await clone.json()
+            tokensIn = data.usage?.prompt_tokens ?? 0
+            tokensOut = data.usage?.completion_tokens ?? 0
+          } catch { /* ignore */ }
+        }
+        logApiCallEnd(correlationId, startTime, request.resolvedModel, 'success', tokensIn, tokensOut, false)
         return response
       }
 
