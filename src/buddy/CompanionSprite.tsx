@@ -115,16 +115,10 @@ function spriteColWidth(nameWidth: number): number {
 // Width the sprite area consumes. PromptInput subtracts this so text wraps
 // correctly. In fullscreen the bubble floats over scrollback (no extra
 // width); in non-fullscreen it sits inline and needs BUBBLE_WIDTH more.
-// Narrow terminals: 0 — REPL.tsx stacks the one-liner on its own row
-// (above input in fullscreen, below in scrollback), so no reservation.
-export function companionReservedColumns(terminalColumns: number, speaking: boolean): number {
-  if (!isBuddyEnabled()) return 0;
-  const companion = getCompanion();
-  if (!companion || getGlobalConfig().companionMuted) return 0;
-  if (terminalColumns < MIN_COLS_FOR_FULL_SPRITE) return 0;
-  const nameWidth = stringWidth(companion.name);
-  const bubble = speaking && !isFullscreenActive() ? BUBBLE_WIDTH : 0;
-  return spriteColWidth(nameWidth) + SPRITE_PADDING_X + bubble;
+// REPL.tsx now renders the companion on its own row below the prompt,
+// so PromptInput should not reserve horizontal columns for it.
+export function companionReservedColumns(_terminalColumns: number, _speaking: boolean): number {
+  return 0;
 }
 export function CompanionSprite(): React.ReactNode {
   const reaction = useAppState(s => s.companionReaction);
@@ -228,7 +222,7 @@ export function CompanionSprite(): React.ReactNode {
       </Text>
     </Box>;
   if (!reaction) {
-    return <Box paddingX={1}>{spriteColumn}</Box>;
+    return <Box paddingX={1} alignSelf="flex-end">{spriteColumn}</Box>;
   }
 
   // Fullscreen: bubble renders separately via CompanionFloatingBubble in
@@ -237,9 +231,9 @@ export function CompanionSprite(): React.ReactNode {
   // Non-fullscreen: bubble sits inline beside the sprite (input shrinks)
   // because floating into Static scrollback can't be cleared.
   if (isFullscreenActive()) {
-    return <Box paddingX={1}>{spriteColumn}</Box>;
+    return <Box paddingX={1} alignSelf="flex-end">{spriteColumn}</Box>;
   }
-  return <Box flexDirection="row" alignItems="flex-end" paddingX={1} flexShrink={0}>
+  return <Box flexDirection="row" alignItems="flex-end" paddingX={1} flexShrink={0} alignSelf="flex-end">
       <SpeechBubble text={reaction} color={color} fading={fading} tail="right" variant={bubbleVariant} />
       {spriteColumn}
     </Box>;

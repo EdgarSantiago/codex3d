@@ -4630,8 +4630,7 @@ export function REPL({
         {showSpinner && <SpinnerWithVerb mode={streamMode} spinnerTip={spinnerTip} responseLengthRef={responseLengthRef} apiMetricsRef={apiMetricsRef} overrideMessage={spinnerMessage} spinnerSuffix={stopHookSpinnerSuffix} verbose={verbose} loadingStartTimeRef={loadingStartTimeRef} totalPausedMsRef={totalPausedMsRef} pauseStartTimeRef={pauseStartTimeRef} overrideColor={spinnerColor} overrideShimmerColor={spinnerShimmerColor} hasActiveTools={inProgressToolUseIDs.size > 0} leaderIsIdle={!isLoading} />}
         {!showSpinner && !isLoading && !userInputOnProcessing && !hasRunningTeammates && isBriefOnly && !viewedAgentTask && <BriefIdleStatus />}
         {isFullscreenEnvEnabled() && <PromptInputQueuedCommands />}
-      </>} bottom={<Box flexDirection={isBuddyEnabled() && companionNarrow ? 'column' : 'row'} width="100%" alignItems={isBuddyEnabled() && companionNarrow ? undefined : 'flex-end'}>
-        {isBuddyEnabled() && companionNarrow && isFullscreenEnvEnabled() && companionVisible ? <CompanionSprite /> : null}
+      </>} bottom={<Box flexDirection="column" width="100%">
         <Box flexDirection="column" flexGrow={1}>
           {permissionStickyFooter}
           {/* Immediate local-jsx commands (/btw, /sandbox, /assistant,
@@ -5035,7 +5034,7 @@ export function REPL({
           }} />}
           {"external" === 'ant' && <DevBar />}
         </Box>
-        {isBuddyEnabled() && !(companionNarrow && isFullscreenEnvEnabled()) && companionVisible ? <CompanionSprite /> : null}
+        {isBuddyEnabled() && companionVisible ? <Box alignItems="flex-end" width="100%"><CompanionSprite /></Box> : null}
       </Box>} />
     </MCPConnectionManager>
   </KeybindingSetup>;

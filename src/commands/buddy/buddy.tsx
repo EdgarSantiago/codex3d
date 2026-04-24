@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto'
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js'
+import { stringWidth } from '../../ink/stringWidth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
+import { truncateToWidth } from '../../utils/truncate.js'
 import {
   companionUserId,
   getCompanion,
@@ -247,51 +249,252 @@ function showUnknownSubcommand(
   })
 }
 
+type StatusStatRow = {
+  label: string
+  bar: string
+  value: number
+  tone: string
+}
+
+type StatusMetricRow = {
+  leftLabel: string
+  leftValue: string
+  centerLabel?: string
+  centerValue?: string
+  rightLabel?: string
+  rightValue?: string
+}
+
+const STATUS_MIN_INNER_WIDTH = 38
+const STATUS_DEFAULT_INNER_WIDTH = 60
+const STATUS_WIDE_BREAKPOINT = 54
+const STATUS_BAR_WIDTH = 10
+
+function statBar(value: number, width = STATUS_BAR_WIDTH): string {
+  const filled = Math.max(0, Math.min(width, Math.round((value / 100) * width)))
+  return `${'█'.repeat(filled)}${'░'.repeat(width - filled)}`
+}
+
+function padDisplay(text: string, width: number): string {
+  const safe = stringWidth(text) > width ? truncateToWidth(text, width) : text
+  return safe + ' '.repeat(Math.max(0, width - stringWidth(safe)))
+}
+
+function formatCell(label: string, value: string, width: number): string {
+  const normalizedLabel = label.toUpperCase()
+  const labelWidth = Math.min(Math.max(stringWidth(normalizedLabel), 4), Math.max(4, width - 2))
+  const valueWidth = Math.max(0, width - labelWidth - 1)
+  return `${padDisplay(normalizedLabel, labelWidth)} ${padDisplay(value, valueWidth)}`
+}
+
+function joinColumns(columns: string[], innerWidth: number): string {
+  if (columns.length === 1) {
+    return padDisplay(columns[0]!, innerWidth)
+  }
+
+  const gap = '  '
+  const available = innerWidth - gap.length * (columns.length - 1)
+  const base = Math.floor(available / columns.length)
+  const widths = Array.from({ length: columns.length }, (_, index) =>
+    base + (index < available % columns.length ? 1 : 0),
+  )
+
+  return columns.map((column, index) => padDisplay(column, widths[index]!)).join(gap)
+}
+
+function renderMetricRow(row: StatusMetricRow, innerWidth: number): string {
+  const entries = [
+    { label: row.leftLabel, value: row.leftValue },
+    ...(row.centerLabel && row.centerValue
+      ? [{ label: row.centerLabel, value: row.centerValue }]
+      : []),
+    ...(row.rightLabel && row.rightValue
+      ? [{ label: row.rightLabel, value: row.rightValue }]
+      : []),
+  ]
+
+  if (innerWidth < STATUS_WIDE_BREAKPOINT && entries.length > 1) {
+    return entries.map(entry => formatCell(entry.label, entry.value, innerWidth)).join('\n')
+  }
+
+  const gap = '  '
+  const available = innerWidth - gap.length * (entries.length - 1)
+  const baseWidth = Math.floor(available / entries.length)
+  const widths = Array.from({ length: entries.length }, (_, index) =>
+    baseWidth + (index < available % entries.length ? 1 : 0),
+  )
+
+  return entries.map((entry, index) => formatCell(entry.label, entry.value, widths[index]!)).join(gap)
+}
+
+function renderMetricRows(rows: StatusMetricRow[], innerWidth: number): string[] {
+  const lines: string[] = []
+
+  for (const row of rows) {
+    const rendered = renderMetricRow(row, innerWidth)
+    lines.push(...rendered.split('\n').map(line => padDisplay(line, innerWidth)))
+  }
+
+  return lines
+}
+
+function renderStatusSectionDivider(innerWidth: number): string {
+  return `├${'─'.repeat(innerWidth + 2)}┤`
+}
+
+function renderStatusTop(
+  companion: Companion,
+  raritySpecies: string,
+  subtitle: string,
+  innerWidth: number,
+  wide: boolean,
+): string[] {
+  const lines: string[] = []
+  lines.push(
+    wide
+      ? joinColumns([companion.name.toUpperCase(), `${titleCase(companion.rarity).toUpperCase()} ${titleCase(companion.species).toUpperCase()}`], innerWidth)
+      : padDisplay(companion.name.toUpperCase(), innerWidth),
+  )
+  if (!wide) {
+    lines.push(padDisplay(`${titleCase(companion.rarity).toUpperCase()} ${titleCase(companion.species).toUpperCase()}`, innerWidth))
+  }
+  lines.push(padDisplay(truncateToWidth(subtitle, innerWidth), innerWidth))
+  return lines
+}
+
+function getTraitTone(name: string, value: number): string {
+  if (name === 'CHAOS') {
+    if (value >= 75) return 'WILD'
+    if (value >= 45) return 'SPICY'
+    if (value >= 20) return 'RESTLESS'
+    return 'CALM'
+  }
+
+  if (value >= 80) return 'ELITE'
+  if (value >= 60) {
+    return name === 'WISDOM' ? 'SHARP' : name === 'SNARK' ? 'CUTTING' : 'STRONG'
+  }
+  if (value >= 40) {
+    return name === 'PATIENCE' ? 'STEADY' : 'BALANCED'
+  }
+  if (value >= 20) {
+    return name === 'DEBUGGING' ? 'CURIOUS' : name === 'SNARK' ? 'MILD' : 'RISING'
+  }
+  return 'QUIET'
+}
+
+function renderTraitRow(stat: StatusStatRow, innerWidth: number): string {
+  const score = String(stat.value).padStart(2, '0')
+  return padDisplay(`${padDisplay(stat.label, 12)} ${stat.bar} ${score}   ${stat.tone}`, innerWidth)
+}
+
+function renderFullWidthRow(label: string, value: string, innerWidth: number): string {
+  const prefix = `${label.toUpperCase()} `
+  const available = Math.max(0, innerWidth - stringWidth(prefix))
+  return padDisplay(prefix + truncateToWidth(value, available), innerWidth)
+}
+
+function renderStatusLines(
+  companion: Companion,
+  subtitle: string,
+  metrics: StatusMetricRow[],
+  stats: StatusStatRow[],
+  badges: string,
+  next: string,
+  innerWidth: number,
+  wide: boolean,
+): string[] {
+  const lines: string[] = [...renderStatusTop(companion, '', subtitle, innerWidth, wide)]
+  lines.push(renderStatusSectionDivider(innerWidth))
+  lines.push(...renderMetricRows(metrics, innerWidth))
+  lines.push(renderStatusSectionDivider(innerWidth))
+  lines.push(renderFullWidthRow('BADGES', badges, innerWidth))
+  lines.push(renderFullWidthRow('NEXT', next, innerWidth))
+  lines.push(renderStatusSectionDivider(innerWidth))
+  for (const stat of stats) lines.push(renderTraitRow(stat, innerWidth))
+  return lines
+}
+
 function formatStatus(companion: Companion): string {
   const mode = getBuddyMode(getGlobalConfig())
   const levelProgress = getBuddyLevelProgress(companion.progress.xpTotal)
   const achievementCount = getBuddyAchievementCount(companion.progress)
   const earnedAchievements = getBuddyAchievements(companion.progress)
   const nextAchievements = getNextBuddyAchievements(companion.progress, 2)
-  const statBar = (value: number, width = 10) => {
-    const filled = Math.max(0, Math.min(width, Math.round((value / 100) * width)))
-    return `${'█'.repeat(filled)}${'░'.repeat(width - filled)}`
-  }
-  const stats = Object.entries(companion.stats).map(
-    ([name, value]) => `${name.padEnd(10)} ${statBar(value)} ${value}`,
+  const innerWidth = Math.max(
+    STATUS_MIN_INNER_WIDTH,
+    Math.min(STATUS_DEFAULT_INNER_WIDTH, (process.stdout.columns ?? 80) - 4),
   )
-
-  const lines = [
-    `${companion.name} · ${RARITY_STARS[companion.rarity]} ${titleCase(companion.rarity)} ${titleCase(companion.species)}`,
-    companion.personality,
-    '─'.repeat(44),
-    `Level ${companion.level} · ${companion.progress.xpTotal} XP`,
-    `Mood ${getBuddyMoodDisplay(companion.mood)}`,
-    `Emotion ${getBuddyMoodBar(companion.progress)}`,
-    `${getBuddyLevelProgressBar(companion.progress.xpTotal)} ${levelProgress.xpIntoLevel}/${levelProgress.xpNeededThisLevel} XP · ${levelProgress.xpRemaining} to next`,
-    `Mode ${formatBuddyMode(mode)}`,
-    `Prompt turns ${companion.progress.promptTurns}`,
-    `Productive turns ${companion.progress.productiveTurns} · Work ${formatBuddyWorkDuration(companion.progress.workDurationMs)}`,
-    `Combo x${companion.progress.currentCombo} · Best x${companion.progress.bestCombo}`,
-    `Streak ${companion.progress.currentStreak}d · Best ${companion.progress.bestStreak}d`,
-    `Error feeds ${companion.progress.errorFeeds} · Achievements ${achievementCount}`,
-    earnedAchievements.length > 0
-      ? `Badges ${earnedAchievements.slice(0, 3).map(achievement => achievement.shortLabel).join(', ')}`
-      : 'Badges none yet',
-    nextAchievements.length > 0
-      ? `Next unlock ${nextAchievements.map(achievement => achievement.shortLabel).join(', ')}`
-      : 'Next unlock all earned',
-    '─'.repeat(44),
-    ...stats,
+  const wide = innerWidth >= STATUS_WIDE_BREAKPOINT
+  const subtitle = `${companion.personality.replace(/[.!?]+$/, '')} · ${formatBuddyMode(mode)}`
+  const metrics: StatusMetricRow[] = [
+    {
+      leftLabel: 'LVL',
+      leftValue: String(companion.level),
+      centerLabel: 'XP',
+      centerValue: String(companion.progress.xpTotal),
+      rightLabel: 'MOOD',
+      rightValue: getBuddyMoodDisplay(companion.mood).replace(/^…\s*/, ''),
+    },
+    {
+      leftLabel: 'EMOTION',
+      leftValue: getBuddyMoodBar(companion.progress),
+      centerLabel: 'COMBO',
+      centerValue: `x${companion.progress.currentCombo} · BEST x${companion.progress.bestCombo}`,
+    },
+    {
+      leftLabel: 'XP BAR',
+      leftValue: `${getBuddyLevelProgressBar(companion.progress.xpTotal)} ${levelProgress.xpIntoLevel}/${levelProgress.xpNeededThisLevel} · ${levelProgress.xpRemaining} LEFT`,
+    },
+    {
+      leftLabel: 'PROMPTS',
+      leftValue: String(companion.progress.promptTurns),
+      centerLabel: 'PRODUCTIVE',
+      centerValue: String(companion.progress.productiveTurns),
+    },
+    {
+      leftLabel: 'WORK',
+      leftValue: formatBuddyWorkDuration(companion.progress.workDurationMs),
+      centerLabel: 'STREAK',
+      centerValue: `${companion.progress.currentStreak}d · BEST ${companion.progress.bestStreak}d`,
+    },
+    {
+      leftLabel: 'ERR FEEDS',
+      leftValue: String(companion.progress.errorFeeds),
+      centerLabel: 'ACHIEVEMENTS',
+      centerValue: String(achievementCount),
+    },
   ]
+  const stats = Object.entries(companion.stats).map(([name, value]) => ({
+    label: name,
+    bar: statBar(value),
+    value,
+    tone: getTraitTone(name, value),
+  }))
+  const badges =
+    earnedAchievements.length > 0
+      ? earnedAchievements.slice(0, 3).map(achievement => achievement.shortLabel).join(' · ')
+      : 'None yet'
+  const next =
+    nextAchievements.length > 0
+      ? nextAchievements.map(achievement => achievement.shortLabel).join(' · ')
+      : 'All earned'
 
-  const width = lines.reduce((max, line) => Math.max(max, line.length), 0)
-  const top = `┌${'─'.repeat(width + 2)}┐`
-  const middle = lines.map(line => `│ ${line.padEnd(width)} │`)
-  const bottom = `└${'─'.repeat(width + 2)}┘`
-
+  const lines = renderStatusLines(companion, subtitle, metrics, stats, badges, next, innerWidth, wide)
+  const top = `┌${'─'.repeat(innerWidth + 2)}┐`
+  const middle = lines.map(line =>
+    line.startsWith('├') && line.endsWith('┤') ? line : `│ ${padDisplay(line, innerWidth)} │`,
+  )
+  const bottom = `└${'─'.repeat(innerWidth + 2)}┘`
   return [top, ...middle, bottom].join('\n')
 }
+
+function getStatusNote(_companion: Companion): string | undefined {
+  return undefined
+}
+
+void getStatusNote
+void RARITY_STARS
 
 function normalizeText(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ')

@@ -104,16 +104,70 @@ test('hatch and status use the same reconstructed buddy', async () => {
   const second = createOnDoneSpy()
   await buddyModule.call(second.onDone, createContext().context, 'status')
 
-  expect(second.calls[0]?.result).toContain(mockConfig.companion?.name ?? '')
-  expect(second.calls[0]?.result).toContain(mockConfig.companion?.personality ?? '')
-  expect(second.calls[0]?.result).toContain('Level 1')
-  expect(second.calls[0]?.result).toContain('0 XP')
-  expect(second.calls[0]?.result).toContain('Mode Balanced')
-  expect(second.calls[0]?.result).toContain('Prompt turns 0')
-  expect(second.calls[0]?.result).toContain('Productive turns 0 · Work 0m')
-  expect(second.calls[0]?.result).toContain('Achievements 0')
-  expect(second.calls[0]?.result).toContain('0/20 XP · 20 to next')
+  expect(second.calls[0]?.result).toContain((mockConfig.companion?.name ?? '').toUpperCase())
+  expect(second.calls[0]?.result).toContain('Playful, observant, and suspicious of flaky tests')
+  expect(second.calls[0]?.result).toContain('LVL')
+  expect(second.calls[0]?.result).toContain('XP')
+  expect(second.calls[0]?.result).toContain('COMMON RABBIT')
+  expect(second.calls[0]?.result).toContain('PROMPTS')
+  expect(second.calls[0]?.result).toContain('PRODUCTIVE')
+  expect(second.calls[0]?.result).toContain('ACHIEVEMENTS')
+  expect(second.calls[0]?.result).not.toContain('PRODUCTI…')
+  expect(second.calls[0]?.result).not.toContain('ACHIEVEM…')
+  expect(second.calls[0]?.result).not.toContain('Excit…')
+  expect(second.calls[0]?.result).not.toContain('Lonely…')
+  expect(second.calls[0]?.result).not.toContain('…')
+  expect(second.calls[0]?.result).toContain('0/20 · 20 LEFT')
+  expect(second.calls[0]?.result).toContain('BADGES')
+  expect(second.calls[0]?.result).not.toContain('NOTE')
 })
+
+test('status shows dynamic trait tones and optional note stays hidden by default', async () => {
+  mockConfig = {
+    userID: 'user-1',
+    companion: {
+      seed: 'seed-1',
+      name: 'Bytedot',
+      personality: 'Curious and quietly encouraging.',
+      hatchedAt: 1,
+      progress: {
+        xpTotal: 2076,
+        promptTurns: 129,
+        productiveTurns: 91,
+        workDurationMs: 104 * 60 * 1000,
+        errorFeeds: 52,
+        currentStreak: 3,
+        bestStreak: 3,
+        currentCombo: 14,
+        bestCombo: 14,
+        highestStatMilestone: 0,
+        statBonuses: undefined,
+        lastPromptAt: undefined,
+        lastWorkAt: 1,
+        lastComboAt: 1,
+        lastStreakDay: 1,
+        recentPromptTurnAts: [],
+        recentWorkAts: [],
+        recentErrorFeedKeys: [],
+        version: 4,
+      },
+    },
+  }
+  installBuddyMocks()
+  const buddyModule = await importFreshBuddyModule()
+  const done = createOnDoneSpy()
+
+  await buddyModule.call(done.onDone, createContext().context, 'status')
+
+  expect(done.calls[0]?.result).toContain('DEBUGGING')
+  expect(done.calls[0]?.result).toContain('BALANCED')
+  expect(done.calls[0]?.result).toContain('CHAOS')
+  expect(done.calls[0]?.result).toContain('SPICY')
+  expect(done.calls[0]?.result).toContain('WISDOM')
+  expect(done.calls[0]?.result).toContain('QUIET')
+  expect(done.calls[0]?.result).not.toContain('NOTE')
+})
+
 
 test('mode command updates buddy mode', async () => {
   installBuddyMocks()
