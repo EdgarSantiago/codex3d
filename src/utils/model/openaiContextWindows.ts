@@ -38,6 +38,8 @@ const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   'github:copilot:gpt-5.2':                  400_000,
   'github:copilot:gpt-5.2-codex':            400_000,
   'github:copilot:gpt-5.3-codex':            400_000,
+  'github:copilot:gpt-5.5':                  400_000,
+  'github:copilot:gpt-5.5-mini':             400_000,
   'github:copilot:gpt-5.4':                  400_000,
   'github:copilot:gpt-5.4-mini':             400_000,
   // Gemini
@@ -60,6 +62,8 @@ const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   'github_copilot/gpt-4.1':                  128_000,
   'github_copilot/gpt-4o':                   128_000,
   'github_copilot/gpt-5-mini':               264_000,
+  'github_copilot/gpt-5.5':                  400_000,
+  'github_copilot/gpt-5.5-mini':             400_000,
   'github_copilot/gpt-5.4':                  400_000,
   'github_copilot/gpt-5.4-mini':             400_000,
   'github_copilot/gemini-2.5-pro':           128_000,
@@ -71,6 +75,9 @@ const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   // limits for the same model name, so we cannot safely hardcode values here.
 
   // OpenAI
+  'gpt-5.5':               1_050_000,
+  'gpt-5.5-mini':            400_000,
+  'gpt-5.5-nano':            400_000,
   'gpt-5.4':               1_050_000,
   'gpt-5.4-mini':            400_000,
   'gpt-5.4-nano':            400_000,
@@ -89,7 +96,13 @@ const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
   'o3-mini':                  200_000,
   'o4-mini':                  200_000,
 
-  // DeepSeek (V3: 128k context per official docs)
+  // DeepSeek V4 coding-agent models. DeepSeek's official coding-agent guide
+  // publishes V4 Pro at 1,048,576 context / 262,144 output; Flash is treated
+  // as the same family for local budgeting until a dedicated public model card
+  // lands.
+  'deepseek-v4-flash':      1_048_576,
+  'deepseek-v4-pro':        1_048_576,
+  // Legacy DeepSeek API aliases documented in the public pricing/model pages.
   'deepseek-chat':            128_000,
   'deepseek-reasoner':        128_000,
 
@@ -288,6 +301,9 @@ const OPENAI_MAX_OUTPUT_TOKENS: Record<string, number> = {
   // NOTE: bare Claude model names omitted — see context windows comment above.
 
   // OpenAI
+  'gpt-5.5':                 128_000,
+  'gpt-5.5-mini':            128_000,
+  'gpt-5.5-nano':            128_000,
   'gpt-5.4':                 128_000,
   'gpt-5.4-mini':            128_000,
   'gpt-5.4-nano':            128_000,
@@ -306,9 +322,12 @@ const OPENAI_MAX_OUTPUT_TOKENS: Record<string, number> = {
   'o3-mini':                  100_000,
   'o4-mini':                  100_000,
 
-  // DeepSeek
+  // DeepSeek V4 coding-agent models. See context-window note above.
+  'deepseek-v4-flash':        262_144,
+  'deepseek-v4-pro':          262_144,
+  // Legacy DeepSeek API aliases documented in the public pricing/model pages.
   'deepseek-chat':              8_192,
-  'deepseek-reasoner':         32_768,
+  'deepseek-reasoner':         65_536,
 
   // Groq
   'llama-3.3-70b-versatile':  32_768,
