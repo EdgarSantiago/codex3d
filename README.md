@@ -33,10 +33,6 @@ The upstream OpenClaude project is also mirrored to GitLawb:
 
 Codex3D is maintained as a clone and independent derivative of OpenClaude.
 
-For most local clones and personal forks:
-
-- `origin` is your fork or the default remote for this Codex3D repository
-- `upstream` is the OpenClaude repository you fetch from when you want to bring in new upstream changes
 
 Codex3D is an independent community project and is not affiliated with, endorsed by, or sponsored by Anthropic.
 
