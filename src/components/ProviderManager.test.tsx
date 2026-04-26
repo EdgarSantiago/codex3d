@@ -118,12 +118,14 @@ const PRESET_ORDER = [
   'LM Studio',
   'MiniMax',
   'Mistral',
-  'Moonshot AI',
+  'Moonshot AI - API',
+  'Moonshot AI - Kimi Code',
   'NVIDIA NIM',
   'Ollama',
   'OpenAI',
   'OpenRouter',
   'Together AI',
+  'Z.AI - GLM Coding Plan',
   'Custom',
 ] as const
 

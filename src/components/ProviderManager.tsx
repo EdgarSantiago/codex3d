@@ -1312,8 +1312,13 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
       },
       {
         value: 'moonshotai',
-        label: 'Moonshot AI',
-        description: 'Kimi OpenAI-compatible endpoint',
+        label: 'Moonshot AI - API',
+        description: 'Moonshot AI - API endpoint',
+      },
+      {
+        value: 'kimi-code',
+        label: 'Moonshot AI - Kimi Code',
+        description: 'Moonshot AI - Kimi Code Subscription endpoint',
       },
       {
         value: 'nvidia-nim',
@@ -1339,6 +1344,11 @@ export function ProviderManager({ mode, onDone }: Props): React.ReactNode {
         value: 'together',
         label: 'Together AI',
         description: 'Together chat/completions endpoint',
+      },
+      {
+        value: 'zai',
+        label: 'Z.AI - GLM Coding Plan',
+        description: 'Z.AI GLM coding subscription endpoint',
       },
       {
         value: 'custom',

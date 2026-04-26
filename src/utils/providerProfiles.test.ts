@@ -591,6 +591,27 @@ describe('getProviderPresetDefaults', () => {
     expect(defaults.requiresApiKey).toBe(false)
   })
 
+  test('kimi-code preset defaults to the Kimi Code coding endpoint', async () => {
+    const { getProviderPresetDefaults } = await importFreshProviderProfileModules()
+
+    const defaults = getProviderPresetDefaults('kimi-code')
+
+    expect(defaults.provider).toBe('openai')
+    expect(defaults.name).toBe('Moonshot AI - Kimi Code')
+    expect(defaults.baseUrl).toBe('https://api.kimi.com/coding/v1')
+    expect(defaults.model).toBe('kimi-for-coding')
+    expect(defaults.requiresApiKey).toBe(true)
+  })
+
+  test('moonshotai preset keeps the direct API under the renamed display label', async () => {
+    const { getProviderPresetDefaults } = await importFreshProviderProfileModules()
+
+    const defaults = getProviderPresetDefaults('moonshotai')
+
+    expect(defaults.name).toBe('Moonshot AI - API')
+    expect(defaults.baseUrl).toBe('https://api.moonshot.ai/v1')
+    expect(defaults.model).toBe('kimi-k2.5')
+  })
   test('deepseek preset defaults to DeepSeek V4 flash and exposes flash/pro aliases', async () => {
     const { getProviderPresetDefaults } = await importFreshProviderProfileModules()
 
@@ -602,6 +623,18 @@ describe('getProviderPresetDefaults', () => {
     expect(defaults.model).toBe(
       'deepseek-v4-flash, deepseek-v4-pro, deepseek-chat, deepseek-reasoner',
     )
+    expect(defaults.requiresApiKey).toBe(true)
+  })
+
+  test('zai preset defaults to Z.AI GLM Coding Plan endpoint', async () => {
+    const { getProviderPresetDefaults } = await importFreshProviderProfileModules()
+
+    const defaults = getProviderPresetDefaults('zai')
+
+    expect(defaults.provider).toBe('openai')
+    expect(defaults.name).toBe('Z.AI - GLM Coding Plan')
+    expect(defaults.baseUrl).toBe('https://api.z.ai/api/coding/paas/v4')
+    expect(defaults.model).toBe('GLM-5.1, GLM-5-Turbo, GLM-4.7, GLM-4.5-Air')
     expect(defaults.requiresApiKey).toBe(true)
   })
 })

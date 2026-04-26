@@ -21,6 +21,7 @@ export type ProviderPreset =
   | 'anthropic'
   | 'ollama'
   | 'openai'
+  | 'kimi-code'
   | 'moonshotai'
   | 'deepseek'
   | 'gemini'
@@ -35,6 +36,7 @@ export type ProviderPreset =
   | 'custom'
   | 'nvidia-nim'
   | 'minimax'
+  | 'zai'
   | 'bankr'
   | 'atomic-chat'
 
@@ -160,10 +162,19 @@ export function getProviderPresetDefaults(
         apiKey: '',
         requiresApiKey: true,
       }
+    case 'kimi-code':
+      return {
+        provider: 'openai',
+        name: 'Moonshot AI - Kimi Code',
+        baseUrl: 'https://api.kimi.com/coding/v1',
+        model: 'kimi-for-coding',
+        apiKey: '',
+        requiresApiKey: true,
+      }
     case 'moonshotai':
       return {
         provider: 'openai',
-        name: 'Moonshot AI',
+        name: 'Moonshot AI - API',
         baseUrl: 'https://api.moonshot.ai/v1',
         model: 'kimi-k2.5',
         apiKey: '',
@@ -305,6 +316,15 @@ export function getProviderPresetDefaults(
         baseUrl: 'https://llm.bankr.bot/v1',
         model: process.env.BANKR_MODEL ?? 'claude-opus-4.6',
         apiKey: process.env.BNKR_API_KEY ?? '',
+        requiresApiKey: true,
+      }
+    case 'zai':
+      return {
+        provider: 'openai',
+        name: 'Z.AI - GLM Coding Plan',
+        baseUrl: 'https://api.z.ai/api/coding/paas/v4',
+        model: 'GLM-5.1, GLM-5-Turbo, GLM-4.7, GLM-4.5-Air',
+        apiKey: '',
         requiresApiKey: true,
       }
     case 'ollama':

@@ -9,6 +9,7 @@ import { isLocalProviderUrl, resolveProviderRequest } from '../services/api/prov
 import { getLocalOpenAICompatibleProviderLabel } from '../utils/providerDiscovery.js'
 import { getSettings_DEPRECATED } from '../utils/settings/settings.js'
 import { parseUserSpecifiedModel } from '../utils/model/model.js'
+import { containsExactZaiGlmModelId, isZaiBaseUrl } from '../utils/zaiProvider.js'
 
 declare const MACRO: { VERSION: string; DISPLAY_VERSION?: string }
 
@@ -127,14 +128,20 @@ export function detectProvider(): { name: string; model: string; baseUrl: string
     else if (/azure/i.test(baseUrl)) name = 'Azure OpenAI'
     else if (/nvidia/i.test(baseUrl)) name = 'NVIDIA NIM'
     else if (/minimax/i.test(baseUrl)) name = 'MiniMax'
-    else if (/moonshot/i.test(baseUrl)) name = 'Moonshot (Kimi)'
+    else if (/api\.kimi\.com/i.test(baseUrl)) name = 'Moonshot AI - Kimi Code'
+    else if (/moonshot/i.test(baseUrl)) name = 'Moonshot AI - API'
     else if (/deepseek/i.test(baseUrl)) name = 'DeepSeek'
+    else if (isZaiBaseUrl(baseUrl)) name = 'Z.AI - GLM'
     else if (/mistral/i.test(baseUrl)) name = 'Mistral'
     // rawModel fallback — fires only when base URL is generic/custom.
     else if (/nvidia/i.test(rawModel)) name = 'NVIDIA NIM'
     else if (/minimax/i.test(rawModel)) name = 'MiniMax'
-    else if (/kimi/i.test(rawModel)) name = 'Moonshot (Kimi)'
+    else if (/\bkimi-for-coding\b/i.test(rawModel))
+      name = 'Moonshot AI - Kimi Code'
+    else if (/\bkimi-k/i.test(rawModel) || /moonshot/i.test(rawModel))
+      name = 'Moonshot AI - API'
     else if (/deepseek/i.test(rawModel)) name = 'DeepSeek'
+    else if (containsExactZaiGlmModelId(rawModel)) name = 'Z.AI - GLM'
     else if (/mistral/i.test(rawModel)) name = 'Mistral'
     else if (/llama/i.test(rawModel)) name = 'Meta Llama'
     else if (/bankr/i.test(baseUrl)) name = 'Bankr'

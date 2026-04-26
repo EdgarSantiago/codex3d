@@ -46,6 +46,7 @@ import {
   type AnthropicUsage,
   type ShimCreateParams,
 } from './codexShim.js'
+import { buildAnthropicUsageFromRawUsage } from './cacheMetrics.js'
 import { compressToolHistory } from './compressToolHistory.js'
 import { fetchWithProxyRetry } from './fetchWithProxyRetry.js'
 import {
@@ -63,6 +64,7 @@ import {
 } from './openaiErrorClassification.js'
 import { sanitizeSchemaForOpenAICompat } from '../../utils/schemaSanitizer.js'
 import { redactSecretValueForDisplay } from '../../utils/providerProfile.js'
+import { isZaiBaseUrl } from '../../utils/zaiProvider.js'
 import {
   normalizeToolArguments,
   hasToolFieldMapping,
@@ -88,10 +90,10 @@ const MOONSHOT_API_HOSTS = new Set([
   'api.moonshot.ai',
   'api.moonshot.cn',
 ])
+const KIMI_CODE_API_HOST = 'api.kimi.com'
 const DEEPSEEK_API_HOSTS = new Set([
   'api.deepseek.com',
 ])
-
 const COPILOT_HEADERS: Record<string, string> = {
   'User-Agent': 'GitHubCopilotChat/0.26.7',
   'Editor-Version': 'vscode/1.99.3',
@@ -156,10 +158,16 @@ function hasGeminiApiHost(baseUrl: string | undefined): boolean {
   }
 }
 
-function isMoonshotBaseUrl(baseUrl: string | undefined): boolean {
+function isMoonshotCompatibleBaseUrl(baseUrl: string | undefined): boolean {
   if (!baseUrl) return false
   try {
-    return MOONSHOT_API_HOSTS.has(new URL(baseUrl).hostname.toLowerCase())
+    const parsed = new URL(baseUrl)
+    const hostname = parsed.hostname.toLowerCase()
+    return (
+      MOONSHOT_API_HOSTS.has(hostname) ||
+      (hostname === KIMI_CODE_API_HOST &&
+        parsed.pathname.toLowerCase().startsWith('/coding'))
+    )
   } catch {
     return false
   }
@@ -516,7 +524,7 @@ function convertMessages(
           })(),
         }
 
-        // Providers that validate reasoning continuity (Moonshot: "thinking
+        // Providers that validate reasoning continuity (Moonshot/Kimi Code: "thinking
         // is enabled but reasoning_content is missing in assistant tool call
         // message at index N" 400) need the original chain-of-thought echoed
         // back on each assistant message that carries a tool_call. We kept
@@ -838,16 +846,12 @@ function convertChunkUsage(
   usage: OpenAIStreamChunk['usage'] | undefined,
 ): Partial<AnthropicUsage> | undefined {
   if (!usage) return undefined
-
-  const cached = usage.prompt_tokens_details?.cached_tokens ?? 0
-  return {
-    // Subtract cached tokens: OpenAI includes them in prompt_tokens,
-    // but Anthropic convention treats input_tokens as non-cached only.
-    input_tokens: (usage.prompt_tokens ?? 0) - cached,
-    output_tokens: usage.completion_tokens ?? 0,
-    cache_creation_input_tokens: 0,
-    cache_read_input_tokens: cached,
-  }
+  // Delegates to the shared helper so this path, codexShim.makeUsage,
+  // the non-streaming response below, and the integration tests all
+  // produce byte-identical output for the same raw input.
+  return buildAnthropicUsageFromRawUsage(
+    usage as unknown as Record<string, unknown>,
+  )
 }
 
 const JSON_REPAIR_SUFFIXES = [
@@ -1504,12 +1508,14 @@ class OpenAIShimMessages {
       request.resolvedModel,
     )
     const openaiMessages = convertMessages(compressedMessages, params.system, {
-      // Moonshot requires every assistant tool-call message to carry
+      // Moonshot/Kimi Code requires every assistant tool-call message to carry
       // reasoning_content when its thinking feature is active. DeepSeek does
       // the same for tool-call turns in thinking mode. Echo it back from the
       // thinking block we captured on the inbound response.
       preserveReasoningContent:
-        isMoonshotBaseUrl(request.baseUrl) || isDeepSeekBaseUrl(request.baseUrl),
+        isMoonshotCompatibleBaseUrl(request.baseUrl) ||
+        isDeepSeekBaseUrl(request.baseUrl) ||
+        isZaiBaseUrl(request.baseUrl),
     })
 
     const body: Record<string, unknown> = {
@@ -1546,20 +1552,32 @@ class OpenAIShimMessages {
     const isGithubCopilot = isGithub && githubEndpointType === 'copilot'
     const isGithubModels = isGithub && (githubEndpointType === 'models' || githubEndpointType === 'custom')
 
-    const isMoonshot = isMoonshotBaseUrl(request.baseUrl)
+    const isMoonshot = isMoonshotCompatibleBaseUrl(request.baseUrl)
     const isDeepSeek = isDeepSeekBaseUrl(request.baseUrl)
+    const isZai = isZaiBaseUrl(request.baseUrl)
 
-    if ((isGithub || isMistral || isLocal || isMoonshot || isDeepSeek) && body.max_completion_tokens !== undefined) {
+    if (
+      (
+        isGithub ||
+        isMistral ||
+        isLocal ||
+        isMoonshot ||
+        isDeepSeek ||
+        isZai
+      ) &&
+      body.max_completion_tokens !== undefined
+    ) {
       body.max_tokens = body.max_completion_tokens
       delete body.max_completion_tokens
     }
 
     // mistral and gemini don't recognize body.store — Gemini returns 400
     // "Invalid JSON payload received. Unknown name 'store': Cannot find field."
-    // Moonshot (api.moonshot.ai/.cn) has not published support for the
-    // parameter either; strip it preemptively to avoid the same class of
-    // error on strict-parse providers.
-    if (isMistral || isGeminiMode() || isMoonshot || isDeepSeek) {
+    // Moonshot direct API, Kimi Code's OpenAI-compatible coding endpoint,
+    // DeepSeek, and Z.AI have not published support for the parameter either;
+    // strip it preemptively to avoid the same class of error on strict-parse
+    // providers.
+    if (isMistral || isGeminiMode() || isMoonshot || isDeepSeek || isZai) {
       delete body.store
     }
 
@@ -1584,6 +1602,17 @@ class OpenAIShimMessages {
         if (effort) {
           body.reasoning_effort = normalizeDeepSeekReasoningEffort(effort)
         }
+      }
+    }
+
+    // Z.AI uses the same thinking format as DeepSeek: { type: "enabled" | "disabled" }
+    // with reasoning_content in responses.
+    if (isZai) {
+      const requestedThinkingType = (params.thinking as { type?: string } | undefined)?.type
+      if (requestedThinkingType && requestedThinkingType !== 'disabled') {
+        body.thinking = { type: 'enabled' }
+      } else if (requestedThinkingType === 'disabled') {
+        body.thinking = { type: 'disabled' }
       }
     }
 
@@ -2145,12 +2174,9 @@ class OpenAIShimMessages {
       model: data.model ?? model,
       stop_reason: stopReason,
       stop_sequence: null,
-      usage: {
-        input_tokens: data.usage?.prompt_tokens ?? 0,
-        output_tokens: data.usage?.completion_tokens ?? 0,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: data.usage?.prompt_tokens_details?.cached_tokens ?? 0,
-      },
+      usage: buildAnthropicUsageFromRawUsage(
+        data.usage as unknown as Record<string, unknown> | undefined,
+      ),
     }
   }
 }

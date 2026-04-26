@@ -101,14 +101,24 @@ describe('detectProvider — direct vendor endpoints', () => {
     expect(detectProvider().name).toBe('DeepSeek')
   })
 
-  test('api.moonshot.cn labels as Moonshot (Kimi)', () => {
+  test('api.kimi.com labels as Moonshot AI - Kimi Code', () => {
+    setupOpenAIMode('https://api.kimi.com/coding/v1', 'kimi-for-coding')
+    expect(detectProvider().name).toBe('Moonshot AI - Kimi Code')
+  })
+
+  test('api.moonshot.cn labels as Moonshot AI - API', () => {
     setupOpenAIMode('https://api.moonshot.cn/v1', 'moonshot-v1-8k')
-    expect(detectProvider().name).toBe('Moonshot (Kimi)')
+    expect(detectProvider().name).toBe('Moonshot AI - API')
   })
 
   test('api.mistral.ai labels as Mistral', () => {
     setupOpenAIMode('https://api.mistral.ai/v1', 'mistral-large-latest')
     expect(detectProvider().name).toBe('Mistral')
+  })
+
+  test('api.z.ai labels as Z.AI GLM', () => {
+    setupOpenAIMode('https://api.z.ai/api/coding/paas/v4', 'GLM-5.1')
+    expect(detectProvider().name).toBe('Z.AI - GLM')
   })
 
   test('default OpenAI URL + gpt-4o labels as OpenAI', () => {
@@ -125,9 +135,14 @@ describe('detectProvider — rawModel fallback when URL is generic', () => {
     expect(detectProvider().name).toBe('DeepSeek')
   })
 
-  test('custom proxy + kimi-k2 falls back to Moonshot (Kimi)', () => {
+  test('custom proxy + kimi-for-coding falls back to Moonshot AI - Kimi Code', () => {
+    setupOpenAIMode('https://my-proxy.internal/v1', 'kimi-for-coding')
+    expect(detectProvider().name).toBe('Moonshot AI - Kimi Code')
+  })
+
+  test('custom proxy + kimi-k2 falls back to Moonshot AI - API', () => {
     setupOpenAIMode('https://my-proxy.internal/v1', 'kimi-k2-instruct')
-    expect(detectProvider().name).toBe('Moonshot (Kimi)')
+    expect(detectProvider().name).toBe('Moonshot AI - API')
   })
 
   test('custom proxy + llama-3.3 falls back to Meta Llama', () => {
@@ -138,6 +153,21 @@ describe('detectProvider — rawModel fallback when URL is generic', () => {
   test('custom proxy + mistral-large falls back to Mistral', () => {
     setupOpenAIMode('https://my-proxy.internal/v1', 'mistral-large-latest')
     expect(detectProvider().name).toBe('Mistral')
+  })
+
+  test('custom proxy + exact uppercase GLM ID falls back to Z.AI GLM', () => {
+    setupOpenAIMode('https://my-proxy.internal/v1', 'GLM-5.1')
+    expect(detectProvider().name).toBe('Z.AI - GLM')
+  })
+
+  test('custom proxy + lowercase glm ID stays generic OpenAI', () => {
+    setupOpenAIMode('https://my-proxy.internal/v1', 'glm-5.1')
+    expect(detectProvider().name).toBe('OpenAI')
+  })
+
+  test('DashScope lowercase glm ID is not mislabeled as Z.AI', () => {
+    setupOpenAIMode('https://dashscope.aliyuncs.com/compatible-mode/v1', 'glm-5.1')
+    expect(detectProvider().name).toBe('OpenAI')
   })
 })
 
