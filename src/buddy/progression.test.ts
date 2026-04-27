@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 
+import type { BuddyProgress } from './types.js'
 import {
   applyBuddyProgressEvent,
   createDefaultBuddyProgress,
@@ -79,21 +80,31 @@ test('getBuddyProgress backfills productivity fields for legacy progress', () =>
       progress: {
         xpTotal: 10,
         promptTurns: 1,
+        productiveTurns: 9,
+        workDurationMs: 9,
+        errorFeeds: 1,
+        currentStreak: 2,
+        bestStreak: 3,
+        currentCombo: 4,
+        bestCombo: 5,
+        highestStatMilestone: 1,
         recentPromptTurnAts: [100],
+        recentWorkAts: [101],
+        recentErrorFeedKeys: ['tool:error'],
         version: 1,
-      },
+      } satisfies BuddyProgress,
     }),
   ).toEqual({
     xpTotal: 10,
     promptTurns: 1,
     productiveTurns: 0,
     workDurationMs: 0,
-    errorFeeds: 0,
+    errorFeeds: 1,
     currentStreak: 0,
     bestStreak: 0,
     currentCombo: 0,
     bestCombo: 0,
-    highestStatMilestone: 0,
+    highestStatMilestone: 1,
     statBonuses: undefined,
     lastPromptAt: undefined,
     lastWorkAt: undefined,
@@ -101,7 +112,7 @@ test('getBuddyProgress backfills productivity fields for legacy progress', () =>
     lastStreakDay: undefined,
     recentPromptTurnAts: [100],
     recentWorkAts: [],
-    recentErrorFeedKeys: [],
+    recentErrorFeedKeys: ['tool:error'],
     version: 4,
   })
 })

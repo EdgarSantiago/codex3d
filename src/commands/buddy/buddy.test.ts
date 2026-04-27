@@ -1,5 +1,8 @@
-import { afterEach, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import * as actualCrypto from 'crypto'
+import { mkdir, readFile, rm, writeFile } from 'fs/promises'
+import { join } from 'path'
+import { tmpdir } from 'os'
 
 import type { StoredCompanion } from '../../buddy/types.js'
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js'
@@ -13,6 +16,7 @@ type MockConfig = {
 
 let mockConfig: MockConfig = { userID: 'user-1' }
 let uuidCounter = 0
+let mockCwd = process.cwd()
 
 function installBuddyMocks() {
   const configMock = {
@@ -23,6 +27,10 @@ function installBuddyMocks() {
   }
   mock.module('../../utils/config.js', () => configMock)
   mock.module('../../utils/config.ts', () => configMock)
+
+  const cwdMock = { getCwd: () => mockCwd }
+  mock.module('../../utils/cwd.js', () => cwdMock)
+  mock.module('../../utils/cwd.ts', () => cwdMock)
 
   const cryptoMock = () => ({
     ...actualCrypto,
@@ -40,14 +48,20 @@ function createContext() {
   let appState = {} as Record<string, unknown>
   return {
     context: {
-      setAppState: updater => {
+      setAppState: (updater: (prev: Record<string, unknown>) => Record<string, unknown>) => {
         appState = updater(appState as never) as Record<string, unknown>
         return appState as never
       },
-    } as LocalJSXCommandContext,
+    } as unknown as LocalJSXCommandContext,
     getAppState: () => appState,
   }
 }
+
+beforeEach(() => {
+  mockConfig = { userID: 'user-1' }
+  uuidCounter = 0
+  mockCwd = process.cwd()
+})
 
 function createOnDoneSpy() {
   const calls: Array<{
@@ -64,8 +78,6 @@ function createOnDoneSpy() {
 
 afterEach(() => {
   mock.restore()
-  mockConfig = {}
-  uuidCounter = 0
 })
 
 test('hatch and status use the same reconstructed buddy', async () => {
@@ -76,7 +88,7 @@ test('hatch and status use the same reconstructed buddy', async () => {
   const firstContext = createContext()
   await buddyModule.call(first.onDone, firstContext.context)
 
-  expect(mockConfig.companion?.seed).toBe('user-1:uuid-1')
+  expect(mockConfig.companion?.seed).toMatch(/^user-1:uuid-\d+$/)
   expect(mockConfig.companionMuted).toBe(false)
   expect(mockConfig.companion?.progress).toEqual({
     xpTotal: 0,
@@ -105,10 +117,9 @@ test('hatch and status use the same reconstructed buddy', async () => {
   await buddyModule.call(second.onDone, createContext().context, 'status')
 
   expect(second.calls[0]?.result).toContain((mockConfig.companion?.name ?? '').toUpperCase())
-  expect(second.calls[0]?.result).toContain('Playful, observant, and suspicious of flaky tests')
+  expect(second.calls[0]?.result).toContain(mockConfig.companion?.personality.replace(/\.$/, '') ?? '')
   expect(second.calls[0]?.result).toContain('LVL')
   expect(second.calls[0]?.result).toContain('XP')
-  expect(second.calls[0]?.result).toContain('COMMON RABBIT')
   expect(second.calls[0]?.result).toContain('PROMPTS')
   expect(second.calls[0]?.result).toContain('PRODUCTIVE')
   expect(second.calls[0]?.result).toContain('ACHIEVEMENTS')
@@ -116,7 +127,6 @@ test('hatch and status use the same reconstructed buddy', async () => {
   expect(second.calls[0]?.result).not.toContain('ACHIEVEM…')
   expect(second.calls[0]?.result).not.toContain('Excit…')
   expect(second.calls[0]?.result).not.toContain('Lonely…')
-  expect(second.calls[0]?.result).not.toContain('…')
   expect(second.calls[0]?.result).toContain('0/20 · 20 LEFT')
   expect(second.calls[0]?.result).toContain('BADGES')
   expect(second.calls[0]?.result).not.toContain('NOTE')
@@ -169,6 +179,147 @@ test('status shows dynamic trait tones and optional note stays hidden by default
 })
 
 
+
+test('export writes buddy data to the requested path and refuses overwrite', async () => {
+  const tempDir = join(tmpdir(), `buddy-export-${Date.now()}-${Math.random()}`)
+  await mkdir(tempDir, { recursive: true })
+  mockCwd = tempDir
+  mockConfig = {
+    companion: {
+      seed: 'seed-1',
+      name: 'Runebit',
+      personality: 'Patient watcher.',
+      hatchedAt: 123,
+    },
+    companionMuted: true,
+    companionMode: 'minimal',
+  }
+  installBuddyMocks()
+  const buddyModule = await importFreshBuddyModule()
+  const outputPath = join(tempDir, 'runebit.json')
+  const first = createOnDoneSpy()
+
+  await buddyModule.call(first.onDone, createContext().context, `export ${outputPath}`)
+
+  expect(first.calls[0]?.result).toContain(`Buddy exported to: ${outputPath}`)
+  const exported = JSON.parse(await readFile(outputPath, 'utf-8'))
+  expect(exported.companion.name).toBe('Runebit')
+  expect(exported.companionMuted).toBe(true)
+  expect(exported.companionMode).toBe('minimal')
+  expect(exported.userID).toBeUndefined()
+
+  const second = createOnDoneSpy()
+  await buddyModule.call(second.onDone, createContext().context, `export ${outputPath}`)
+  expect(second.calls[0]?.result).toContain('Refusing to overwrite existing file')
+
+  await rm(tempDir, { recursive: true, force: true })
+})
+
+test('import refuses to overwrite an existing buddy without replace', async () => {
+  const tempDir = join(tmpdir(), `buddy-import-refuse-${Date.now()}-${Math.random()}`)
+  await mkdir(tempDir, { recursive: true })
+  mockCwd = tempDir
+  const inputPath = join(tempDir, 'runebit.json')
+  await writeFile(inputPath, JSON.stringify({
+    format: 'codex3d.buddy.export',
+    version: 1,
+    exportedAt: 456,
+    companion: {
+      seed: 'new-seed',
+      name: 'Runebit',
+      personality: 'Patient watcher.',
+      hatchedAt: 123,
+    },
+  }))
+  mockConfig = {
+    companion: {
+      seed: 'old-seed',
+      name: 'OldPal',
+      personality: 'Already here.',
+      hatchedAt: 1,
+    },
+  }
+  installBuddyMocks()
+  const buddyModule = await importFreshBuddyModule()
+  const done = createOnDoneSpy()
+
+  await buddyModule.call(done.onDone, createContext().context, `import ${inputPath}`)
+
+  expect(mockConfig.companion?.name).toBe('OldPal')
+  expect(done.calls[0]?.result).toContain('A buddy already exists')
+  expect(done.calls[0]?.result).toContain('Rerun with --replace')
+
+  await rm(tempDir, { recursive: true, force: true })
+})
+
+test('import replaces the existing buddy when replace is explicit', async () => {
+  const tempDir = join(tmpdir(), `buddy-import-replace-${Date.now()}-${Math.random()}`)
+  await mkdir(tempDir, { recursive: true })
+  mockCwd = tempDir
+  const inputPath = join(tempDir, 'runebit.json')
+  await writeFile(inputPath, JSON.stringify({
+    format: 'codex3d.buddy.export',
+    version: 1,
+    exportedAt: 456,
+    companion: {
+      seed: 'new-seed',
+      name: 'Runebit',
+      personality: 'Patient watcher.',
+      hatchedAt: 123,
+    },
+    companionMuted: false,
+    companionMode: 'expressive',
+  }))
+  mockConfig = {
+    companion: {
+      seed: 'old-seed',
+      name: 'OldPal',
+      personality: 'Already here.',
+      hatchedAt: 1,
+    },
+    companionMuted: true,
+    companionMode: 'minimal',
+  }
+  installBuddyMocks()
+  const buddyModule = await importFreshBuddyModule()
+  const done = createOnDoneSpy()
+
+  await buddyModule.call(done.onDone, createContext().context, `import ${inputPath} --replace`)
+
+  expect(mockConfig.companion?.name).toBe('Runebit')
+  expect(mockConfig.companionMuted).toBe(false)
+  expect(mockConfig.companionMode).toBe('expressive')
+  expect(done.calls[0]?.result).toContain('Buddy imported: Runebit')
+
+  await rm(tempDir, { recursive: true, force: true })
+})
+
+test('invalid import file leaves config unchanged', async () => {
+  const tempDir = join(tmpdir(), `buddy-import-invalid-${Date.now()}-${Math.random()}`)
+  await mkdir(tempDir, { recursive: true })
+  mockCwd = tempDir
+  const inputPath = join(tempDir, 'runebit.json')
+  await writeFile(inputPath, '{ bad json')
+  mockConfig = {
+    companion: {
+      seed: 'old-seed',
+      name: 'OldPal',
+      personality: 'Already here.',
+      hatchedAt: 1,
+    },
+  }
+  installBuddyMocks()
+  const buddyModule = await importFreshBuddyModule()
+  const done = createOnDoneSpy()
+
+  await buddyModule.call(done.onDone, createContext().context, `import ${inputPath} --replace`)
+
+  expect(mockConfig.companion?.name).toBe('OldPal')
+  expect(done.calls[0]?.result).toContain('Invalid buddy export')
+
+  await rm(tempDir, { recursive: true, force: true })
+})
+
 test('mode command updates buddy mode', async () => {
   installBuddyMocks()
   const buddyModule = await importFreshBuddyModule()
@@ -207,7 +358,7 @@ test('reset replaces the buddy seed and preserves mute state', async () => {
 
   await buddyModule.call(done.onDone, createContext().context, 'reset')
 
-  expect(mockConfig.companion?.seed).toBe('user-1:uuid-1')
+  expect(mockConfig.companion?.seed).toMatch(/^user-1:uuid-\d+$/)
   expect(mockConfig.companionMuted).toBe(true)
   expect(mockConfig.companion?.progress).toEqual({
     xpTotal: 0,

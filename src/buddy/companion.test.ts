@@ -1,6 +1,6 @@
 import { afterEach, expect, mock, test } from 'bun:test'
 
-import type { StoredCompanion } from './types.js'
+import type { BuddyProgress, StoredCompanion } from './types.js'
 
 type MockGlobalConfig = {
   companion?: StoredCompanion
@@ -40,10 +40,23 @@ test('getCompanionFromStored uses stored seed when present', async () => {
     progress: {
       xpTotal: 20,
       promptTurns: 2,
+      productiveTurns: 99,
+      workDurationMs: 99,
+      errorFeeds: 1,
+      currentStreak: 3,
+      bestStreak: 4,
+      currentCombo: 2,
+      bestCombo: 3,
+      highestStatMilestone: 1,
       lastPromptAt: 123,
+      lastWorkAt: 456,
+      lastComboAt: 456,
+      lastStreakDay: 1,
       recentPromptTurnAts: [123, 122],
+      recentWorkAts: [456],
+      recentErrorFeedKeys: ['tool:error'],
       version: 1,
-    },
+    } satisfies BuddyProgress,
   }
 
   const companion = companionModule.getCompanionFromStored(stored)
@@ -52,6 +65,13 @@ test('getCompanionFromStored uses stored seed when present', async () => {
   expect(companion).toMatchObject({
     ...stored,
     ...seededRoll,
+    progress: {
+      xpTotal: 20,
+      promptTurns: 2,
+      lastPromptAt: 123,
+      recentPromptTurnAts: [123, 122],
+      version: 4,
+    },
     level: 2,
     mood: 'lonely',
   })

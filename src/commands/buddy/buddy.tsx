@@ -1,7 +1,11 @@
 import { randomUUID } from 'crypto'
+import { constants } from 'fs'
+import { access, readFile, stat, writeFile } from 'fs/promises'
+import { join, resolve } from 'path'
 import type { LocalJSXCommandContext, LocalJSXCommandOnDone } from '../../types/command.js'
 import { stringWidth } from '../../ink/stringWidth.js'
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js'
+import { getCwd } from '../../utils/cwd.js'
 import { truncateToWidth } from '../../utils/truncate.js'
 import {
   companionUserId,
@@ -39,6 +43,22 @@ import {
   getBuddyPromptTurnBonusXp,
   getNextBuddyAchievements,
 } from '../../buddy/progression.js'
+import {
+  BUDDY_LIFECYCLE_PHRASES,
+  BUDDY_MANUAL_PET_PHRASES,
+  BUDDY_PROGRESS_PHRASES,
+  BUDDY_TOOL_ERROR_PHRASES,
+  formatBuddyPhrase,
+  pickBuddyPhrase,
+} from '../../buddy/phrases.js'
+import {
+  createBuddyExport,
+  parseBuddyExport,
+  serializeBuddyExport,
+  summarizeBuddyExport,
+} from '../../buddy/transfer.js'
+import type { BuddyExportData } from '../../buddy/transfer.js'
+import type { CompanionAnimationKind } from '../../buddy/visualState.js'
 import { COMMON_HELP_ARGS, COMMON_INFO_ARGS } from '../../constants/xml.js'
 
 const NAME_PREFIXES = [
@@ -75,16 +95,187 @@ const PERSONALITIES = [
   'A tiny terminal gremlin who likes successful builds',
 ] as const
 
-const PET_REACTIONS = [
-  'leans into the headpat',
-  'does a proud little bounce',
-  'emits a content beep',
-  'looks delighted',
-  'wiggles happily',
-] as const
-
 const MAX_NAME_LENGTH = 32
 const MAX_PERSONALITY_LENGTH = 160
+const MAX_BUDDY_IMPORT_BYTES = 64 * 1024
+
+function formatBuddyExportTimestamp(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day}-${hours}${minutes}${seconds}`
+}
+
+function resolveBuddyTransferPath(pathArg: string): string {
+  return resolve(getCwd(), pathArg)
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path, constants.F_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function parseBuddyTransferArgs(rawArgs: string): {
+  path?: string
+  force: boolean
+  replace: boolean
+  dryRun: boolean
+} {
+  const parts = rawArgs.split(/\s+/).filter(Boolean)
+  const flags = new Set(parts.filter(part => part.startsWith('--')))
+  return {
+    path: parts.find(part => !part.startsWith('--')),
+    force: flags.has('--force'),
+    replace: flags.has('--replace'),
+    dryRun: flags.has('--dry-run'),
+  }
+}
+
+async function exportBuddy(onDone: LocalJSXCommandOnDone, rawArgs: string): Promise<void> {
+  const { path, force } = parseBuddyTransferArgs(rawArgs)
+  const exportResult = createBuddyExport(getGlobalConfig())
+  if (!exportResult.ok) {
+    onDone(exportResult.error, { display: 'system' })
+    return
+  }
+
+  const outputPath = path
+    ? resolveBuddyTransferPath(path)
+    : join(getCwd(), `buddy-export-${formatBuddyExportTimestamp(new Date(exportResult.value.exportedAt))}.json`)
+
+  if (!force && await pathExists(outputPath)) {
+    onDone(`Refusing to overwrite existing file: ${outputPath}\nRerun with --force to overwrite it.`, {
+      display: 'system',
+    })
+    return
+  }
+
+  try {
+    await writeFile(outputPath, serializeBuddyExport(exportResult.value), {
+      encoding: 'utf-8',
+      flag: force ? 'w' : 'wx',
+    })
+  } catch (error) {
+    const errorCode = error && typeof error === 'object' && 'code' in error
+      ? String(error.code)
+      : undefined
+    if (!force && errorCode === 'EEXIST') {
+      onDone(`Refusing to overwrite existing file: ${outputPath}\nRerun with --force to overwrite it.`, {
+        display: 'system',
+      })
+      return
+    }
+    onDone(`Failed to export buddy: ${error instanceof Error ? error.message : 'Unknown error'}`, {
+      display: 'system',
+    })
+    return
+  }
+
+  const warningText = exportResult.warnings.length > 0
+    ? `\nWarning: ${exportResult.warnings.join(' ')}`
+    : ''
+  onDone(
+    `Buddy exported to: ${outputPath}${warningText}\nImport with: /buddy import ${outputPath}`,
+    { display: 'system' },
+  )
+}
+
+async function readBuddyImportFile(path: string): Promise<{ ok: true; raw: string } | { ok: false; error: string }> {
+  let fileStat
+  try {
+    fileStat = await stat(path)
+  } catch (error) {
+    return { ok: false, error: `Failed to read buddy export: ${error instanceof Error ? error.message : 'Unknown error'}` }
+  }
+  if (!fileStat.isFile()) {
+    return { ok: false, error: 'Buddy import path must be a file.' }
+  }
+  if (fileStat.size > MAX_BUDDY_IMPORT_BYTES) {
+    return { ok: false, error: `Buddy export file must be ${MAX_BUDDY_IMPORT_BYTES} bytes or smaller.` }
+  }
+  if (fileStat.size === 0) {
+    return { ok: false, error: 'Buddy export file is empty.' }
+  }
+  return { ok: true, raw: await readFile(path, 'utf-8') }
+}
+
+function applyBuddyImport(exportData: BuddyExportData, replace: boolean): { imported: boolean; current?: StoredCompanion } {
+  let currentCompanion: StoredCompanion | undefined
+  let imported = false
+  saveGlobalConfig(current => {
+    if (current.companion && !replace) {
+      currentCompanion = current.companion
+      return current
+    }
+    imported = true
+    return {
+      ...current,
+      companion: exportData.companion,
+      companionMuted: exportData.companionMuted,
+      companionMode: exportData.companionMode,
+    }
+  })
+  return { imported, current: currentCompanion }
+}
+
+async function importBuddy(
+  onDone: LocalJSXCommandOnDone,
+  context: Pick<LocalJSXCommandContext, 'setAppState'>,
+  rawArgs: string,
+): Promise<void> {
+  const { path, replace, dryRun } = parseBuddyTransferArgs(rawArgs)
+  if (!path) {
+    onDone('Usage: /buddy import <path> [--dry-run|--replace]', { display: 'system' })
+    return
+  }
+
+  const inputPath = resolveBuddyTransferPath(path)
+  const file = await readBuddyImportFile(inputPath)
+  if (!file.ok) {
+    onDone(file.error, { display: 'system' })
+    return
+  }
+
+  const parsed = parseBuddyExport(file.raw)
+  if (!parsed.ok) {
+    onDone(`Invalid buddy export: ${parsed.error}`, { display: 'system' })
+    return
+  }
+
+  const incomingSummary = summarizeBuddyExport(parsed.value)
+  const warningText = parsed.warnings.length > 0
+    ? `\nWarning: ${parsed.warnings.join(' ')}`
+    : ''
+
+  if (dryRun) {
+    onDone(`Buddy export is valid: ${incomingSummary}${warningText}`, { display: 'system' })
+    return
+  }
+
+  const result = applyBuddyImport(parsed.value, replace)
+  if (!result.imported && result.current) {
+    const currentSummary = summarizeBuddyExport({
+      ...parsed.value,
+      companion: result.current,
+    })
+    onDone(
+      `A buddy already exists.\nCurrent: ${currentSummary}\nImport: ${incomingSummary}\nRerun with --replace to replace your current buddy.`,
+      { display: 'system' },
+    )
+    return
+  }
+
+  setCompanionReaction(context, undefined)
+  onDone(`Buddy imported: ${incomingSummary}${warningText}`, { display: 'system' })
+}
+
 
 function hashString(s: string): number {
   let h = 2166136261
@@ -126,7 +317,7 @@ export function setCompanionReaction(
   context: Pick<LocalJSXCommandContext, 'setAppState'>,
   reaction: string | undefined,
   pet = false,
-  kind: 'idle' | 'pet' | 'speak' | 'errorFeed' = pet ? 'pet' : reaction ? 'speak' : 'idle',
+  kind: CompanionAnimationKind = pet ? 'pet' : reaction ? 'speak' : 'idle',
 ): void {
   const now = Date.now()
   context.setAppState(prev => ({
@@ -217,15 +408,20 @@ export function awardBuddyToolError(
 }
 
 function createErrorFeedMessage(name: string, toolName: string): string {
-  return `${name} munches the ${toolName} error.`
+  return formatBuddyPhrase(
+    pickBuddyPhrase(BUDDY_TOOL_ERROR_PHRASES, `${name}:${toolName}`),
+    { name, toolName },
+  )
 }
 
 function renderHelp(): string {
-  return `Usage: /buddy [status|mode <minimal|balanced|expressive>|rename <name>|edit personality <text>|reset|reroll|mute|unmute|help]
+  return `Usage: /buddy [status|mode <minimal|balanced|expressive>|rename <name>|edit personality <text>|export [path] [--force]|import <path> [--dry-run|--replace]|reset|reroll|mute|unmute|help]
 
 Manage your one active buddy.
 
 ${getBuddyModeHelp()}
+
+Transfer your buddy with /buddy export [path] and /buddy import <path>.
 
 Run /buddy with no args to hatch your companion the first time, then pet them on later runs.`
 }
@@ -620,12 +816,24 @@ export function awardBuddyPromptTurn(
   if (!getGlobalConfig().companionMuted) {
     const leveledUp = nextLevel > currentLevel
     const reactionText = leveledUp
-      ? `${companion.name} leveled up to ${nextLevel}!`
+      ? formatBuddyPhrase(
+          pickBuddyPhrase(BUDDY_PROGRESS_PHRASES.levelUp, `${companion.name}:${nextLevel}`),
+          { name: companion.name, level: nextLevel },
+        )
       : unlockedAchievement
-        ? `+${awardedXp} XP · Unlocked ${unlockedAchievement.shortLabel}`
+        ? formatBuddyPhrase(
+            pickBuddyPhrase(BUDDY_PROGRESS_PHRASES.achievement, `${awardedXp}:${unlockedAchievement.id}`),
+            { xp: awardedXp, achievement: unlockedAchievement.shortLabel },
+          )
         : comboImproved
-          ? `+${awardedXp} XP · Combo x${productiveProgress.currentCombo}`
-          : `+${awardedXp} XP`
+          ? formatBuddyPhrase(
+              pickBuddyPhrase(BUDDY_PROGRESS_PHRASES.combo, `${awardedXp}:${productiveProgress.currentCombo}`),
+              { xp: awardedXp, combo: productiveProgress.currentCombo },
+            )
+          : formatBuddyPhrase(
+              pickBuddyPhrase(BUDDY_PROGRESS_PHRASES.xp, `${companion.name}:${awardedXp}`),
+              { xp: awardedXp },
+            )
     const animationKind = leveledUp
       ? 'levelUp'
       : unlockedAchievement
@@ -693,6 +901,16 @@ export async function call(
     return null
   }
 
+  if (normalized === 'export' || normalized.startsWith('export ')) {
+    await exportBuddy(onDone, trimmedArgs.slice('export'.length).trim())
+    return null
+  }
+
+  if (normalized === 'import' || normalized.startsWith('import ')) {
+    await importBuddy(onDone, context, trimmedArgs.slice('import'.length).trim())
+    return null
+  }
+
   if (normalized === 'mute' || normalized === 'unmute') {
     const muted = normalized === 'mute'
     saveGlobalConfig(current => ({
@@ -710,7 +928,10 @@ export async function call(
     const companion = saveBuddy(createStoredCompanion())
     setCompanionReaction(
       context,
-      `${companion.name} the ${companion.species} has arrived.`,
+      formatBuddyPhrase(
+        pickBuddyPhrase(BUDDY_LIFECYCLE_PHRASES.arrived, `${companion.name}:${companion.species}`),
+        { name: companion.name, species: companion.species },
+      ),
       true,
     )
     onDone(
@@ -731,7 +952,13 @@ export async function call(
       return null
     }
     const companion = saveBuddy({ ...stored, name })
-    setCompanionReaction(context, `${companion.name} looks pleased with the new name.`)
+    setCompanionReaction(
+      context,
+      formatBuddyPhrase(
+        pickBuddyPhrase(BUDDY_LIFECYCLE_PHRASES.renamed, companion.name),
+        { name: companion.name },
+      ),
+    )
     onDone(`Buddy renamed to ${companion.name}.`, { display: 'system' })
     return null
   }
@@ -755,7 +982,13 @@ export async function call(
       return null
     }
     const companion = saveBuddy({ ...stored, personality })
-    setCompanionReaction(context, `${companion.name} seems extra self-aware now.`)
+    setCompanionReaction(
+      context,
+      formatBuddyPhrase(
+        pickBuddyPhrase(BUDDY_LIFECYCLE_PHRASES.personalityEdited, companion.name),
+        { name: companion.name },
+      ),
+    )
     onDone(`Updated ${companion.name}'s personality.`, { display: 'system' })
     return null
   }
@@ -770,7 +1003,10 @@ export async function call(
     companion = saveBuddy(createStoredCompanion(), true)
     setCompanionReaction(
       context,
-      `${companion.name} the ${companion.species} has hatched.`,
+      formatBuddyPhrase(
+        pickBuddyPhrase(BUDDY_LIFECYCLE_PHRASES.hatched, `${companion.name}:${companion.species}`),
+        { name: companion.name, species: companion.species },
+      ),
       true,
     )
     onDone(
@@ -780,8 +1016,8 @@ export async function call(
     return null
   }
 
-  const reaction = `${companion.name} ${pickDeterministic(
-    PET_REACTIONS,
+  const reaction = `${companion.name} ${pickBuddyPhrase(
+    BUDDY_MANUAL_PET_PHRASES,
     `${Date.now()}:${companion.name}`,
   )}`
   setCompanionReaction(context, reaction, true)
