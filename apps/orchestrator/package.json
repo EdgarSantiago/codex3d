@@ -1,0 +1,32 @@
+{
+  "name": "codex3d-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "tsc --noEmit && electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "electron-vite": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "xterm": "latest",
+    "xterm-addon-fit": "latest",
+    "zod": "latest",
+    "zustand": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "electron": "latest",
+    "typescript": "latest"
+  },
+  "optionalDependencies": {
+    "node-pty": "latest"
+  }
+}
