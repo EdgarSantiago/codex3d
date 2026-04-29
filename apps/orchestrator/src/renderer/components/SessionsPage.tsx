@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AgentSession, Workspace } from '../../shared/types'
 import type { TerminalLayoutNode, TerminalSplitOrientation } from '../stores/appStore'
-import { TerminalTabBar } from './TerminalTabBar'
+import { TerminalTabBar, type TabContextMenuRequest } from './TerminalTabBar'
 import { TerminalView } from './TerminalView'
 
 type SessionsPageProps = {
@@ -19,10 +19,12 @@ type SessionsPageProps = {
   onSelectPaneSession: (paneId: string, sessionId: string) => void
   onSplitPane: (paneId: string, orientation: TerminalSplitOrientation) => void
   onMoveSessionToPane: (sessionId: string, targetPaneId: string) => void
+  onClosePane: (paneId: string) => void
   onLaunchSession: () => Promise<void>
   onRestartSession: (sessionId: string) => Promise<void>
   onStopSession: (sessionId: string) => Promise<void>
   onCloseSession: (sessionId: string) => Promise<void>
+  onRenameSession: (sessionId: string, name: string) => void
   onSendInput: (sessionId: string, input: string) => Promise<void>
   onResizeTerminal: (sessionId: string, cols: number, rows: number) => void
 }
@@ -42,15 +44,21 @@ export function SessionsPage({
   onSelectPaneSession,
   onSplitPane,
   onMoveSessionToPane,
+  onClosePane,
   onLaunchSession,
   onRestartSession,
   onStopSession,
   onCloseSession,
+  onRenameSession,
   onSendInput,
   onResizeTerminal,
 }: SessionsPageProps) {
   const [busy, setBusy] = useState(false)
+  const [pendingRenameSession, setPendingRenameSession] = useState<AgentSession | undefined>()
+  const [tabMenu, setTabMenu] = useState<TabContextMenuRequest | undefined>()
+  const [renameValue, setRenameValue] = useState('')
   const [pendingCloseSession, setPendingCloseSession] = useState<AgentSession | undefined>()
+  const [pendingClosePaneId, setPendingClosePaneId] = useState<string | undefined>()
 
   useEffect(() => {
     const firstSessionId = sessions[0]?.id
@@ -101,6 +109,20 @@ export function SessionsPage({
     }
   }, [onCloseSession, pendingCloseSession])
 
+  const renamePendingSession = useCallback(() => {
+    if (!pendingRenameSession) return
+    const nextName = renameValue.trim()
+    if (nextName) onRenameSession(pendingRenameSession.id, nextName)
+    setPendingRenameSession(undefined)
+    setRenameValue('')
+  }, [onRenameSession, pendingRenameSession, renameValue])
+
+  const closePendingPane = useCallback(() => {
+    if (!pendingClosePaneId) return
+    onClosePane(pendingClosePaneId)
+    setPendingClosePaneId(undefined)
+  }, [onClosePane, pendingClosePaneId])
+
   const sessionsById = new Map(sessions.map(session => [session.id, session]))
 
   return (
@@ -134,7 +156,11 @@ export function SessionsPage({
         onSelectPaneSession={onSelectPaneSession}
         onSplitPane={onSplitPane}
         onMoveSessionToPane={onMoveSessionToPane}
-        onRequestCloseSession={setPendingCloseSession}
+        onClosePane={setPendingClosePaneId}
+        onRequestCloseSession={session => {
+          setPendingCloseSession(session)
+        }}
+        onRequestTabMenu={request => setTabMenu(request)}
         onLaunchSession={launchSession}
         onRestartSession={restartSession}
         onStopSession={stopSession}
@@ -155,6 +181,64 @@ export function SessionsPage({
           </div>
         </div>
       ) : null}
+
+      {tabMenu ? (
+        <div className="context-menu-layer" role="presentation" onMouseDown={() => setTabMenu(undefined)}>
+          <div
+            className="tab-context-menu"
+            role="menu"
+            style={{ left: tabMenu.x, top: tabMenu.y }}
+            onMouseDown={event => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setPendingRenameSession(tabMenu.session)
+                setRenameValue(tabMenu.session.name)
+                setTabMenu(undefined)
+              }}
+            >
+              Rename
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingRenameSession ? (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="rename-terminal-title">
+            <h2 id="rename-terminal-title">Rename terminal</h2>
+            <p>Set a local display name for this terminal tab.</p>
+            <input
+              value={renameValue}
+              onChange={event => setRenameValue(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') renamePendingSession()
+                if (event.key === 'Escape') setPendingRenameSession(undefined)
+              }}
+              autoFocus
+            />
+            <div className="confirm-modal-actions">
+              <button type="button" onClick={() => setPendingRenameSession(undefined)}>Cancel</button>
+              <button type="button" className="danger-button" onClick={renamePendingSession}>Rename</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingClosePaneId ? (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="close-pane-title">
+            <h2 id="close-pane-title">Close split panel?</h2>
+            <p>This closes the split panel. Terminal tabs inside it will move with the remaining layout only if already moved elsewhere.</p>
+            <div className="confirm-modal-actions">
+              <button type="button" onClick={() => setPendingClosePaneId(undefined)}>Cancel</button>
+              <button type="button" className="danger-button" onClick={closePendingPane}>Close panel</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       </div>
     </div>
   )
@@ -170,7 +254,9 @@ type SplitNodeViewProps = {
   onSelectPaneSession: (paneId: string, sessionId: string) => void
   onSplitPane: (paneId: string, orientation: TerminalSplitOrientation) => void
   onMoveSessionToPane: (sessionId: string, targetPaneId: string) => void
+  onClosePane: (paneId: string) => void
   onRequestCloseSession: (session: AgentSession) => void
+  onRequestTabMenu: (request: TabContextMenuRequest) => void
   onLaunchSession: () => Promise<void>
   onRestartSession: (sessionId?: string) => Promise<void>
   onStopSession: (sessionId?: string) => Promise<void>
@@ -212,6 +298,8 @@ function SplitNodeView(props: SplitNodeViewProps) {
         onSplitPane={orientation => props.onSplitPane(node.id, orientation)}
         onMoveSessionToPane={props.onMoveSessionToPane}
         onRequestCloseSession={props.onRequestCloseSession}
+        onRequestTabMenu={props.onRequestTabMenu}
+        onClosePane={() => props.onClosePane(node.id)}
       />
       <TerminalView
         session={selectedSession}
