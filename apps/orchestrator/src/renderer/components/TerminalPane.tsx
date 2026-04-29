@@ -76,7 +76,12 @@ export function TerminalPane({ sessionId, output, onInput, onResize, onClear, on
     terminal.write('Launch an agent to open a terminal.\r\n')
 
     const reportSize = () => {
-      fitAddon.fit()
+      if (!container.isConnected || container.clientWidth === 0 || container.clientHeight === 0) return
+      try {
+        fitAddon.fit()
+      } catch {
+        return
+      }
       const next = { cols: terminal.cols, rows: terminal.rows }
       const previous = lastSizeRef.current
       if (next.cols !== previous.cols || next.rows !== previous.rows) {
@@ -139,7 +144,13 @@ export function TerminalPane({ sessionId, output, onInput, onResize, onClear, on
     writtenLengthRef.current = 0
     terminal.clear()
     terminal.write(sessionId ? 'Connected to session.\r\n' : 'Launch an agent to open a terminal.\r\n')
-    window.requestAnimationFrame(() => fitAddonRef.current?.fit())
+    window.requestAnimationFrame(() => {
+      try {
+        fitAddonRef.current?.fit()
+      } catch {
+        // The pane can be hidden or mid-layout when switching workspaces.
+      }
+    })
   }, [sessionId])
 
   useEffect(() => {

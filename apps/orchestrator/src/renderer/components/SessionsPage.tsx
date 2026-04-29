@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AgentSession } from '../../shared/types'
+import type { AgentSession, Workspace } from '../../shared/types'
 import type { TerminalLayoutNode, TerminalSplitOrientation } from '../stores/appStore'
 import { TerminalTabBar } from './TerminalTabBar'
 import { TerminalView } from './TerminalView'
 
 type SessionsPageProps = {
+  workspaces: Workspace[]
+  activeWorkspaceId?: string
+  onSelectWorkspace: (workspaceId: string) => void
+  onAddWorkspace: () => Promise<void>
   sessions: AgentSession[]
   selectedSessionId?: string
   outputBySession: Record<string, string>
@@ -24,6 +28,10 @@ type SessionsPageProps = {
 }
 
 export function SessionsPage({
+  workspaces,
+  activeWorkspaceId,
+  onSelectWorkspace,
+  onAddWorkspace,
   sessions,
   selectedSessionId,
   outputBySession,
@@ -45,8 +53,11 @@ export function SessionsPage({
   const [pendingCloseSession, setPendingCloseSession] = useState<AgentSession | undefined>()
 
   useEffect(() => {
-    if (!selectedSessionId && sessions[0]) {
-      onSelectSession(sessions[0].id)
+    const firstSessionId = sessions[0]?.id
+    if (!firstSessionId || selectedSessionId === firstSessionId) return
+    const selectedBelongsToWorkspace = selectedSessionId ? sessions.some(session => session.id === selectedSessionId) : false
+    if (!selectedBelongsToWorkspace) {
+      onSelectSession(firstSessionId)
     }
   }, [onSelectSession, selectedSessionId, sessions])
 
@@ -93,7 +104,26 @@ export function SessionsPage({
   const sessionsById = new Map(sessions.map(session => [session.id, session]))
 
   return (
-    <div className="tabbed-sessions-page" aria-busy={busy}>
+    <div className="sessions-shell">
+      <div className="sessions-workspace-switcher">
+        <div className="workspace-chip-row" aria-label="Workspace switcher">
+          {workspaces.map(workspace => (
+            <button
+              type="button"
+              key={workspace.id}
+              className={`workspace-chip ${workspace.id === activeWorkspaceId ? 'active' : ''}`}
+              onClick={() => onSelectWorkspace(workspace.id)}
+              title={workspace.path}
+            >
+              {workspace.name}
+            </button>
+          ))}
+          <button type="button" className="workspace-chip add" onClick={() => void onAddWorkspace()}>+ Add</button>
+        </div>
+        <span>{workspaces.find(workspace => workspace.id === activeWorkspaceId)?.path ?? 'No workspace selected'}</span>
+      </div>
+
+      <div className="tabbed-sessions-page" aria-busy={busy}>
       <SplitNodeView
         node={terminalLayout}
         sessionsById={sessionsById}
@@ -125,6 +155,7 @@ export function SessionsPage({
           </div>
         </div>
       ) : null}
+      </div>
     </div>
   )
 }

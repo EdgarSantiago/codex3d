@@ -31,6 +31,7 @@ class SessionManager {
     const now = Date.now()
     const session: AgentSession = {
       id,
+      workspaceId: input.workspaceId,
       name: input.name ?? `${adapter.displayName} ${input.role}`,
       provider: input.provider,
       role: input.role,

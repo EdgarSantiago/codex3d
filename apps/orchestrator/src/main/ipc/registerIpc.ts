@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain, BrowserWindow, dialog } from 'electron'
 import { listAgentAdapters } from '../agents/registry'
 import { listLocalClaudeAgents } from '../agents/localAgents'
 import { listLocalClaudeSkills } from '../skills/localSkills'
@@ -31,6 +31,14 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('agents:listLocalClaude', () => listLocalClaudeAgents())
 
   ipcMain.handle('skills:listLocalClaude', () => listLocalClaudeSkills())
+
+  ipcMain.handle('workspaces:chooseFolder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select workspace folder',
+    })
+    return result.canceled ? undefined : result.filePaths[0]
+  })
 
   ipcMain.handle('sessions:list', () => sessionManager.list())
 

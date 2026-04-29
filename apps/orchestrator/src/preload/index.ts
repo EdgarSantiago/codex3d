@@ -23,6 +23,9 @@ const api = {
   skills: {
     listLocalClaude: () => ipcRenderer.invoke('skills:listLocalClaude') as Promise<LocalSkill[]>,
   },
+  workspaces: {
+    chooseFolder: () => ipcRenderer.invoke('workspaces:chooseFolder') as Promise<string | undefined>,
+  },
   sessions: {
     list: () => ipcRenderer.invoke('sessions:list') as Promise<AgentSession[]>,
     launch: (input: LaunchAgentInput) => ipcRenderer.invoke('sessions:launch', input) as Promise<AgentSession>,

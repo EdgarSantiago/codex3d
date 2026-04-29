@@ -8,6 +8,7 @@ export type AgentRole = 'manual' | 'planner' | 'implementer' | 'verifier' | 'rev
 
 export type AgentSession = {
   id: string
+  workspaceId?: string
   name: string
   provider: AgentProvider
   role: AgentRole
@@ -24,9 +25,19 @@ export type LaunchAgentInput = {
   role: AgentRole
   cwd: string
   name?: string
+  workspaceId?: string
   workspaceMode: WorkspaceMode
   binaryPath?: string
   args?: string[]
+}
+
+export type Workspace = {
+  id: string
+  name: string
+  path: string
+  defaultWorkspaceMode: WorkspaceMode
+  createdAt: number
+  updatedAt: number
 }
 
 export type ProviderDetectionResult = {

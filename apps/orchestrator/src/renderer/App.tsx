@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react'
 import type { AgentRole, AgentSession, LocalAgent, LocalSkill, WorkspaceMode } from '../shared/types'
 import { SessionsPage } from './components/SessionsPage'
+import { WorkspacesPage } from './components/WorkspacesPage'
 import { useAppStore } from './stores/appStore'
 
 const navItems = ['Dashboard', 'Workspaces', 'Sessions', 'Skills & Agents', 'Settings'] as const
 type Page = typeof navItems[number]
 
 const roles: AgentRole[] = ['manual', 'planner', 'implementer', 'verifier', 'reviewer', 'tester', 'researcher']
-const workspaceModes: WorkspaceMode[] = ['same-folder', 'new-worktree', 'selected-folder']
 const quickSkills = ['Codex3D Implementer', 'Codex3D Verifier', 'Codex3D Planner', '/buddy status', '/commit', '/simplify']
 
 export function App() {
   const {
+    workspaces,
+    activeWorkspaceId,
+    addWorkspace,
+    setActiveWorkspace,
+    updateWorkspace,
+    removeWorkspace,
     sessions,
     activeSessionId,
     outputBySession,
@@ -36,9 +42,7 @@ export function App() {
   } = useAppStore()
 
   const [page, setPage] = useState<Page>('Dashboard')
-  const [cwd, setCwd] = useState('C:/Users/Mestre/Desktop/myprojects/codex3d')
   const [role, setRole] = useState<AgentRole>('manual')
-  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('same-folder')
 
 
   useEffect(() => {
@@ -59,13 +63,28 @@ export function App() {
     }
   }, [appendOutput, setDetections, setLocalAgents, setLocalSkills, setSessions, upsertSession])
 
+  const activeWorkspace = workspaces.find(workspace => workspace.id === activeWorkspaceId)
+  const workspaceSessions = sessions.filter(session => session.workspaceId === activeWorkspaceId)
+
+  async function chooseWorkspaceFolder() {
+    const path = await window.orchestrator.workspaces.chooseFolder()
+    if (!path) return
+    addWorkspace(path)
+    setPage('Sessions')
+  }
+
   async function launchCodex3D() {
-    const terminalNumber = sessions.length + 1
+    if (!activeWorkspace) {
+      setPage('Workspaces')
+      return
+    }
+    const terminalNumber = workspaceSessions.length + 1
     const session = await window.orchestrator.sessions.launch({
       provider: 'codex3d',
       role,
-      cwd,
-      workspaceMode,
+      cwd: activeWorkspace.path,
+      workspaceId: activeWorkspace.id,
+      workspaceMode: activeWorkspace.defaultWorkspaceMode,
       name: `Terminal ${terminalNumber}`,
     })
     upsertSession(session)
@@ -122,11 +141,25 @@ export function App() {
           <button className="primary" onClick={launchCodex3D}>Launch Codex3D</button>
         </header>
 
-        {page === 'Dashboard' && renderDashboard({ detections, cwd, setCwd, role, setRole, workspaceMode, setWorkspaceMode })}
-        {page === 'Workspaces' && renderWorkspaces(cwd, setCwd, workspaceMode, setWorkspaceMode)}
+        {page === 'Dashboard' && renderDashboard({ detections, role, setRole, activeWorkspace })}
+        {page === 'Workspaces' && (
+          <WorkspacesPage
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            sessionCounts={sessionCountsByWorkspace(sessions)}
+            onChooseFolder={chooseWorkspaceFolder}
+            onSelectWorkspace={setActiveWorkspace}
+            onUpdateWorkspace={updateWorkspace}
+            onRemoveWorkspace={removeWorkspace}
+          />
+        )}
         {page === 'Sessions' && (
           <SessionsPage
-            sessions={sessions}
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            onSelectWorkspace={setActiveWorkspace}
+            onAddWorkspace={chooseWorkspaceFolder}
+            sessions={workspaceSessions}
             selectedSessionId={activeSessionId}
             outputBySession={outputBySession}
             terminalLayout={terminalLayout}
@@ -154,11 +187,11 @@ export function App() {
 function getPageDescription(page: Page): string {
   switch (page) {
     case 'Dashboard':
-      return 'Launch and coordinate multiple Codex3D sessions. Other agent CLIs fit through adapters later.'
+      return 'Launch and coordinate Codex3D sessions inside the active workspace.'
     case 'Workspaces':
-      return 'Manage project folders, workspace modes, and future isolated worktrees.'
+      return 'Select local project folders and choose where new Codex3D terminals open.'
     case 'Sessions':
-      return 'Interact with running Codex3D sessions and send prompts or slash commands.'
+      return 'Interact with running Codex3D sessions for the active workspace.'
     case 'Skills & Agents':
       return 'Manage reusable agent presets and local Claude skills from ~/.claude/skills.'
     case 'Settings':
@@ -168,12 +201,9 @@ function getPageDescription(page: Page): string {
 
 function renderDashboard(props: {
   detections: ReturnType<typeof useAppStore.getState>['detections']
-  cwd: string
-  setCwd: (cwd: string) => void
   role: AgentRole
   setRole: (role: AgentRole) => void
-  workspaceMode: WorkspaceMode
-  setWorkspaceMode: (mode: WorkspaceMode) => void
+  activeWorkspace?: ReturnType<typeof useAppStore.getState>['workspaces'][number]
 }) {
   return (
     <>
@@ -192,22 +222,21 @@ function renderDashboard(props: {
         </div>
 
         <div className="card">
-          <h2>New Codex3D agent</h2>
-          <label>
-            Workspace path
-            <input value={props.cwd} onChange={event => props.setCwd(event.target.value)} />
-          </label>
+          <h2>Active workspace</h2>
+          {props.activeWorkspace ? (
+            <div className="row workspace-row">
+              <div>
+                <strong>{props.activeWorkspace.name}</strong>
+                <span>{props.activeWorkspace.path}</span>
+              </div>
+              <span className="pill ok">{props.activeWorkspace.defaultWorkspaceMode}</span>
+            </div>
+          ) : <p>No workspace selected. Add one from Workspaces.</p>}
           <div className="form-row">
             <label>
               Role
               <select value={props.role} onChange={event => props.setRole(event.target.value as AgentRole)}>
                 {roles.map(value => <option key={value} value={value}>{value}</option>)}
-              </select>
-            </label>
-            <label>
-              Workspace mode
-              <select value={props.workspaceMode} onChange={event => props.setWorkspaceMode(event.target.value as WorkspaceMode)}>
-                {workspaceModes.map(value => <option key={value} value={value}>{value}</option>)}
               </select>
             </label>
           </div>
@@ -221,37 +250,6 @@ function renderDashboard(props: {
         </div>
       </section>
     </>
-  )
-}
-
-function renderWorkspaces(cwd: string, setCwd: (cwd: string) => void, workspaceMode: WorkspaceMode, setWorkspaceMode: (mode: WorkspaceMode) => void) {
-  return (
-    <section className="grid two">
-      <div className="card">
-        <h2>Current workspace</h2>
-        <label>
-          Project path
-          <input value={cwd} onChange={event => setCwd(event.target.value)} />
-        </label>
-        <div className="row workspace-row">
-          <div>
-            <strong>codex3d</strong>
-            <span>{cwd}</span>
-          </div>
-          <span className="pill ok">Active</span>
-        </div>
-      </div>
-      <div className="card">
-        <h2>Workspace mode</h2>
-        <label>
-          Default launch mode
-          <select value={workspaceMode} onChange={event => setWorkspaceMode(event.target.value as WorkspaceMode)}>
-            {workspaceModes.map(value => <option key={value} value={value}>{value}</option>)}
-          </select>
-        </label>
-        <p className="note">Worktree creation will use short paths later to avoid Windows path-length issues.</p>
-      </div>
-    </section>
   )
 }
 
@@ -306,6 +304,14 @@ function renderSkillsAndAgents(localAgents: LocalAgent[], localSkills: LocalSkil
       </div>
     </section>
   )
+}
+
+function sessionCountsByWorkspace(sessions: AgentSession[]): Record<string, number> {
+  return sessions.reduce<Record<string, number>>((counts, session) => {
+    if (!session.workspaceId) return counts
+    counts[session.workspaceId] = (counts[session.workspaceId] ?? 0) + 1
+    return counts
+  }, {})
 }
 
 function renderSettings(detections: ReturnType<typeof useAppStore.getState>['detections']) {
