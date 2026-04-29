@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AgentSession, Workspace } from '../../shared/types'
+import type { AgentSession, DevTerminal, Workspace } from '../../shared/types'
 import type { TerminalLayoutNode, TerminalSplitOrientation } from '../stores/appStore'
 import { TerminalTabBar, type TabContextMenuRequest } from './TerminalTabBar'
 import { TerminalView } from './TerminalView'
+import { WorkspacePreviewPanel } from './WorkspacePreviewPanel'
 
 type SessionsPageProps = {
   workspaces: Workspace[]
@@ -29,6 +30,20 @@ type SessionsPageProps = {
   onRenameSession: (sessionId: string, name: string) => void
   onSendInput: (sessionId: string, input: string) => Promise<void>
   onResizeTerminal: (sessionId: string, cols: number, rows: number) => void
+  devTerminals: DevTerminal[]
+  activeDevTerminalId?: string
+  devOutputByTerminal: Record<string, string>
+  previewUrl?: string
+  previewPanelWidth?: number
+  previewPanelHidden: boolean
+  onSetPreviewUrl: (workspaceId: string, url: string) => void
+  onSetPreviewPanelWidth: (width: number) => void
+  onSetPreviewPanelHidden: (hidden: boolean) => void
+  onCreateDevTerminal: () => Promise<void>
+  onSelectDevTerminal: (terminalId: string) => void
+  onCloseDevTerminal: (terminalId: string) => Promise<void>
+  onSendDevInput: (terminalId: string, input: string) => void
+  onResizeDevTerminal: (terminalId: string, cols: number, rows: number) => void
 }
 
 export function SessionsPage({
@@ -56,6 +71,20 @@ export function SessionsPage({
   onRenameSession,
   onSendInput,
   onResizeTerminal,
+  devTerminals,
+  activeDevTerminalId,
+  devOutputByTerminal,
+  previewUrl,
+  previewPanelWidth,
+  previewPanelHidden,
+  onSetPreviewUrl,
+  onSetPreviewPanelWidth,
+  onSetPreviewPanelHidden,
+  onCreateDevTerminal,
+  onSelectDevTerminal,
+  onCloseDevTerminal,
+  onSendDevInput,
+  onResizeDevTerminal,
 }: SessionsPageProps) {
   const [busy, setBusy] = useState(false)
   const [pendingRenameSession, setPendingRenameSession] = useState<AgentSession | undefined>()
@@ -162,29 +191,71 @@ export function SessionsPage({
         </div>
       </div>
 
-      <div className="tabbed-sessions-page" aria-busy={busy}>
-      <SplitNodeView
-        node={terminalLayout}
-        sessionsById={sessionsById}
-        outputBySession={outputBySession}
-        activePaneId={activePaneId}
-        onSelectPane={onSelectPane}
-        onSelectSession={onSelectSession}
-        onSelectPaneSession={onSelectPaneSession}
-        onSplitPane={onSplitPane}
-        onResizeSplit={onResizeSplit}
-        onMoveSessionToPane={onMoveSessionToPane}
-        onClosePane={setPendingClosePaneId}
-        onRequestCloseSession={session => {
-          setPendingCloseSession(session)
-        }}
-        onRequestTabMenu={request => setTabMenu(request)}
-        onLaunchSession={launchSession}
-        onRestartSession={restartSession}
-        onStopSession={stopSession}
-        onSendInput={onSendInput}
-        onResizeTerminal={onResizeTerminal}
-      />
+      <div
+        className={`workspace-main-layout ${previewPanelHidden ? 'preview-hidden' : ''}`}
+        aria-busy={busy}
+        style={{ gridTemplateColumns: previewPanelHidden ? 'minmax(0, 1fr) 40px' : `minmax(0, 1fr) 8px ${previewPanelWidth ?? 420}px` }}
+      >
+        <div className="workspace-agent-area">
+          <div className="tabbed-sessions-page">
+            <SplitNodeView
+              node={terminalLayout}
+              sessionsById={sessionsById}
+              outputBySession={outputBySession}
+              activePaneId={activePaneId}
+              onSelectPane={onSelectPane}
+              onSelectSession={onSelectSession}
+              onSelectPaneSession={onSelectPaneSession}
+              onSplitPane={onSplitPane}
+              onResizeSplit={onResizeSplit}
+              onMoveSessionToPane={onMoveSessionToPane}
+              onClosePane={setPendingClosePaneId}
+              onRequestCloseSession={session => {
+                setPendingCloseSession(session)
+              }}
+              onRequestTabMenu={request => setTabMenu(request)}
+              onLaunchSession={launchSession}
+              onRestartSession={restartSession}
+              onStopSession={stopSession}
+              onSendInput={onSendInput}
+              onResizeTerminal={onResizeTerminal}
+            />
+          </div>
+        </div>
+        {previewPanelHidden ? (
+          <button
+            type="button"
+            className="workspace-preview-show-button"
+            onClick={() => onSetPreviewPanelHidden(false)}
+          >
+            Preview
+          </button>
+        ) : (
+          <>
+            <div
+              className="workspace-right-resize-handle"
+              role="separator"
+              aria-orientation="vertical"
+              onPointerDown={event => startRightPanelResize(event, onSetPreviewPanelWidth)}
+              onDoubleClick={() => onSetPreviewPanelWidth(420)}
+            />
+            <WorkspacePreviewPanel
+          workspace={activeWorkspace}
+          previewUrl={previewUrl}
+          devTerminals={devTerminals}
+          activeDevTerminalId={activeDevTerminalId}
+          devOutputByTerminal={devOutputByTerminal}
+          onSetPreviewUrl={onSetPreviewUrl}
+          onCreateDevTerminal={onCreateDevTerminal}
+          onSelectDevTerminal={onSelectDevTerminal}
+          onCloseDevTerminal={onCloseDevTerminal}
+          onSendDevInput={onSendDevInput}
+          onResizeDevTerminal={onResizeDevTerminal}
+          onHide={() => onSetPreviewPanelHidden(true)}
+        />
+          </>
+        )}
+      </div>
 
       {pendingCloseSession ? (
         <div className="modal-backdrop" role="presentation">
@@ -257,9 +328,29 @@ export function SessionsPage({
           </div>
         </div>
       ) : null}
-      </div>
     </div>
   )
+}
+
+function startRightPanelResize(event: React.PointerEvent<HTMLDivElement>, onResize: (width: number) => void) {
+  const layout = event.currentTarget.parentElement
+  if (!layout) return
+  event.preventDefault()
+  const rect = layout.getBoundingClientRect()
+
+  function move(pointerEvent: PointerEvent) {
+    onResize(rect.right - pointerEvent.clientX)
+  }
+
+  function stop() {
+    window.removeEventListener('pointermove', move)
+    window.removeEventListener('pointerup', stop)
+    document.body.classList.remove('terminal-resizing')
+  }
+
+  document.body.classList.add('terminal-resizing')
+  window.addEventListener('pointermove', move)
+  window.addEventListener('pointerup', stop, { once: true })
 }
 
 type SplitResizeHandleProps = {

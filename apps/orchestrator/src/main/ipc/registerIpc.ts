@@ -5,10 +5,16 @@ import { listAgentAdapters } from '../agents/registry'
 import { listLocalClaudeAgents } from '../agents/localAgents'
 import { listLocalClaudeSkills } from '../skills/localSkills'
 import { sessionManager } from '../sessions/sessionManager'
+import { devTerminalManager } from '../devTerminals/devTerminalManager'
 import {
+  createDevTerminalSchema,
+  devTerminalIdSchema,
+  devTerminalInputSchema,
   launchAgentSchema,
   openWorkspaceSchema,
+  renameDevTerminalSchema,
   renameSessionSchema,
+  resizeDevTerminalSchema,
   resizeSessionSchema,
   sendInputSchema,
   stopSessionSchema,
@@ -18,6 +24,11 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   sessionManager.setHandlers({
     onOutput: event => mainWindow.webContents.send('agent:output', event),
     onStatus: session => mainWindow.webContents.send('agent:status', session),
+  })
+
+  devTerminalManager.setHandlers({
+    onOutput: event => mainWindow.webContents.send('devTerminal:output', event),
+    onStatus: terminal => mainWindow.webContents.send('devTerminal:status', terminal),
   })
 
   ipcMain.handle('providers:list', () => {
@@ -51,6 +62,39 @@ export function registerIpc(mainWindow: BrowserWindow): void {
     } catch {
       await shell.openExternal(`vscode://file${pathToFileURL(parsed.path).pathname}`)
     }
+  })
+
+  ipcMain.handle('devTerminals:list', () => devTerminalManager.list())
+
+  ipcMain.handle('devTerminals:outputs', () => devTerminalManager.outputs())
+
+  ipcMain.handle('devTerminals:create', (_event, input: unknown) => {
+    return devTerminalManager.create(createDevTerminalSchema.parse(input))
+  })
+
+  ipcMain.handle('devTerminals:sendInput', (_event, input: unknown) => {
+    const parsed = devTerminalInputSchema.parse(input)
+    devTerminalManager.sendInput(parsed.terminalId, parsed.input)
+  })
+
+  ipcMain.handle('devTerminals:resize', (_event, input: unknown) => {
+    const parsed = resizeDevTerminalSchema.parse(input)
+    devTerminalManager.resize(parsed.terminalId, parsed.cols, parsed.rows)
+  })
+
+  ipcMain.handle('devTerminals:rename', (_event, input: unknown) => {
+    const parsed = renameDevTerminalSchema.parse(input)
+    return devTerminalManager.rename(parsed.terminalId, parsed.name)
+  })
+
+  ipcMain.handle('devTerminals:remove', (_event, input: unknown) => {
+    const parsed = devTerminalIdSchema.parse(input)
+    devTerminalManager.remove(parsed.terminalId)
+  })
+
+  ipcMain.handle('devTerminals:stop', (_event, input: unknown) => {
+    const parsed = devTerminalIdSchema.parse(input)
+    devTerminalManager.stop(parsed.terminalId)
   })
 
   ipcMain.handle('sessions:list', () => sessionManager.list())

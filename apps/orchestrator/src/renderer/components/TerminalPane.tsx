@@ -11,9 +11,21 @@ type TerminalPaneProps = {
   onClear?: () => void
   onRestart?: () => void
   onStop?: () => void
+  emptyMessage?: string
+  connectedMessage?: string
 }
 
-export function TerminalPane({ sessionId, output, onInput, onResize, onClear, onRestart, onStop }: TerminalPaneProps) {
+export function TerminalPane({
+  sessionId,
+  output,
+  onInput,
+  onResize,
+  onClear,
+  onRestart,
+  onStop,
+  emptyMessage = 'Launch an agent to open a terminal.',
+  connectedMessage = 'Connected to session.',
+}: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -73,7 +85,7 @@ export function TerminalPane({ sessionId, output, onInput, onResize, onClear, on
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
     terminal.open(container)
-    terminal.write('Launch an agent to open a terminal.\r\n')
+    terminal.write(`${emptyMessage}\r\n`)
 
     const reportSize = () => {
       if (!container.isConnected || container.clientWidth === 0 || container.clientHeight === 0) return
@@ -162,7 +174,7 @@ export function TerminalPane({ sessionId, output, onInput, onResize, onClear, on
     sessionIdRef.current = sessionId
     writtenLengthRef.current = 0
     terminal.clear()
-    terminal.write(sessionId ? 'Connected to session.\r\n' : 'Launch an agent to open a terminal.\r\n')
+    terminal.write(sessionId ? `${connectedMessage}\r\n` : `${emptyMessage}\r\n`)
     window.requestAnimationFrame(() => {
       try {
         fitAddonRef.current?.fit()
@@ -170,7 +182,7 @@ export function TerminalPane({ sessionId, output, onInput, onResize, onClear, on
         // The pane can be hidden or mid-layout when switching workspaces.
       }
     })
-  }, [sessionId])
+  }, [connectedMessage, emptyMessage, sessionId])
 
   useEffect(() => {
     const terminal = terminalRef.current

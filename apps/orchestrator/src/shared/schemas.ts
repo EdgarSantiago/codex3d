@@ -35,6 +35,32 @@ export const renameSessionSchema = z.object({
   name: z.string().min(1),
 })
 
+export const createDevTerminalSchema = z.object({
+  workspaceId: z.string().min(1),
+  cwd: z.string().min(1),
+  name: z.string().min(1).optional(),
+})
+
+export const devTerminalInputSchema = z.object({
+  terminalId: z.string().min(1),
+  input: z.string(),
+})
+
+export const resizeDevTerminalSchema = z.object({
+  terminalId: z.string().min(1),
+  cols: z.number().int().positive(),
+  rows: z.number().int().positive(),
+})
+
+export const devTerminalIdSchema = z.object({
+  terminalId: z.string().min(1),
+})
+
+export const renameDevTerminalSchema = z.object({
+  terminalId: z.string().min(1),
+  name: z.string().min(1),
+})
+
 export const openWorkspaceSchema = z.object({
   path: z.string().min(1),
 })

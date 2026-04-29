@@ -24,6 +24,9 @@ type PersistedWorkspaceState = {
   layoutByWorkspaceId: Record<string, TerminalLayoutNode>
   activePaneIdByWorkspaceId: Record<string, string>
   activeSessionIdByWorkspaceId: Record<string, string | undefined>
+  previewUrlByWorkspaceId: Record<string, string | undefined>
+  previewPanelWidthByWorkspaceId: Record<string, number | undefined>
+  previewPanelHiddenByWorkspaceId: Record<string, boolean | undefined>
 }
 
 type AppState = {
@@ -40,6 +43,9 @@ type AppState = {
   layoutByWorkspaceId: Record<string, TerminalLayoutNode>
   activePaneIdByWorkspaceId: Record<string, string>
   activeSessionIdByWorkspaceId: Record<string, string | undefined>
+  previewUrlByWorkspaceId: Record<string, string | undefined>
+  previewPanelWidthByWorkspaceId: Record<string, number | undefined>
+  previewPanelHiddenByWorkspaceId: Record<string, boolean | undefined>
   addWorkspace: (path: string) => Workspace
   setActiveWorkspace: (workspaceId: string) => void
   updateWorkspace: (workspaceId: string, input: Partial<Pick<Workspace, 'name' | 'defaultWorkspaceMode'>>) => void
@@ -61,6 +67,9 @@ type AppState = {
   removeSessionFromLayout: (sessionId: string) => void
   closePane: (paneId: string) => void
   renameSession: (sessionId: string, name: string) => void
+  setWorkspacePreviewUrl: (workspaceId: string, url: string) => void
+  setWorkspacePreviewPanelWidth: (workspaceId: string, width: number) => void
+  setWorkspacePreviewPanelHidden: (workspaceId: string, hidden: boolean) => void
 }
 
 const STORAGE_KEY = 'codex3d-orchestrator-workspaces'
@@ -84,6 +93,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   layoutByWorkspaceId: persisted.layoutByWorkspaceId,
   activePaneIdByWorkspaceId: persisted.activePaneIdByWorkspaceId,
   activeSessionIdByWorkspaceId: persisted.activeSessionIdByWorkspaceId,
+  previewUrlByWorkspaceId: persisted.previewUrlByWorkspaceId,
+  previewPanelWidthByWorkspaceId: persisted.previewPanelWidthByWorkspaceId,
+  previewPanelHiddenByWorkspaceId: persisted.previewPanelHiddenByWorkspaceId,
   terminalLayout: getWorkspaceLayout(persisted.activeWorkspaceId ?? persisted.workspaces[0]?.id, persisted.layoutByWorkspaceId),
   activePaneId: getWorkspaceActivePaneId(persisted.activeWorkspaceId ?? persisted.workspaces[0]?.id, persisted.activePaneIdByWorkspaceId),
   addWorkspace: path => {
@@ -112,6 +124,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         layoutByWorkspaceId,
         activePaneIdByWorkspaceId,
         activeSessionIdByWorkspaceId: state.activeSessionIdByWorkspaceId,
+        previewUrlByWorkspaceId: state.previewUrlByWorkspaceId,
+        previewPanelWidthByWorkspaceId: state.previewPanelWidthByWorkspaceId,
+        previewPanelHiddenByWorkspaceId: state.previewPanelHiddenByWorkspaceId,
         terminalLayout: layoutByWorkspaceId[workspace.id],
         activePaneId: initialPaneId,
         activeSessionId: undefined,
@@ -148,6 +163,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { [workspaceId]: _removedLayout, ...layoutByWorkspaceId } = state.layoutByWorkspaceId
     const { [workspaceId]: _removedPane, ...activePaneIdByWorkspaceId } = state.activePaneIdByWorkspaceId
     const { [workspaceId]: _removedSession, ...activeSessionIdByWorkspaceId } = state.activeSessionIdByWorkspaceId
+    const { [workspaceId]: _removedPreviewUrl, ...previewUrlByWorkspaceId } = state.previewUrlByWorkspaceId
+    const { [workspaceId]: _removedPreviewPanelWidth, ...previewPanelWidthByWorkspaceId } = state.previewPanelWidthByWorkspaceId
+    const { [workspaceId]: _removedPreviewPanelHidden, ...previewPanelHiddenByWorkspaceId } = state.previewPanelHiddenByWorkspaceId
     const terminalLayout = getWorkspaceLayout(activeWorkspaceId, layoutByWorkspaceId)
     const activePaneId = getWorkspaceActivePaneId(activeWorkspaceId, activePaneIdByWorkspaceId)
     const activeSessionId = activeWorkspaceId ? activeSessionIdByWorkspaceId[activeWorkspaceId] : undefined
@@ -157,6 +175,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       layoutByWorkspaceId,
       activePaneIdByWorkspaceId,
       activeSessionIdByWorkspaceId,
+      previewUrlByWorkspaceId,
+      previewPanelWidthByWorkspaceId,
+      previewPanelHiddenByWorkspaceId,
       terminalLayout,
       activePaneId,
       activeSessionId,
@@ -276,6 +297,33 @@ export const useAppStore = create<AppState>((set, get) => ({
   renameSession: (sessionId, name) => set(state => ({
     sessions: state.sessions.map(session => session.id === sessionId ? { ...session, name, updatedAt: Date.now() } : session),
   })),
+  setWorkspacePreviewUrl: (workspaceId, url) => set(state => {
+    const previewUrlByWorkspaceId = {
+      ...state.previewUrlByWorkspaceId,
+      [workspaceId]: normalizePreviewUrl(url),
+    }
+    const next = { previewUrlByWorkspaceId }
+    persistWorkspaceState({ ...state, ...next })
+    return next
+  }),
+  setWorkspacePreviewPanelWidth: (workspaceId, width) => set(state => {
+    const previewPanelWidthByWorkspaceId = {
+      ...state.previewPanelWidthByWorkspaceId,
+      [workspaceId]: Math.round(Math.min(760, Math.max(280, width))),
+    }
+    const next = { previewPanelWidthByWorkspaceId }
+    persistWorkspaceState({ ...state, ...next })
+    return next
+  }),
+  setWorkspacePreviewPanelHidden: (workspaceId, hidden) => set(state => {
+    const previewPanelHiddenByWorkspaceId = {
+      ...state.previewPanelHiddenByWorkspaceId,
+      [workspaceId]: hidden,
+    }
+    const next = { previewPanelHiddenByWorkspaceId }
+    persistWorkspaceState({ ...state, ...next })
+    return next
+  }),
 }))
 
 type PaneNode = Extract<TerminalLayoutNode, { type: 'pane' }>
@@ -521,6 +569,9 @@ function loadPersistedState(): PersistedWorkspaceState {
       layoutByWorkspaceId: parsed.layoutByWorkspaceId ?? {},
       activePaneIdByWorkspaceId: parsed.activePaneIdByWorkspaceId ?? {},
       activeSessionIdByWorkspaceId: parsed.activeSessionIdByWorkspaceId ?? {},
+      previewUrlByWorkspaceId: parsed.previewUrlByWorkspaceId ?? {},
+      previewPanelWidthByWorkspaceId: parsed.previewPanelWidthByWorkspaceId ?? {},
+      previewPanelHiddenByWorkspaceId: parsed.previewPanelHiddenByWorkspaceId ?? {},
     }
   } catch {
     return emptyPersistedState()
@@ -533,10 +584,13 @@ function emptyPersistedState(): PersistedWorkspaceState {
     layoutByWorkspaceId: {},
     activePaneIdByWorkspaceId: {},
     activeSessionIdByWorkspaceId: {},
+    previewUrlByWorkspaceId: {},
+    previewPanelWidthByWorkspaceId: {},
+    previewPanelHiddenByWorkspaceId: {},
   }
 }
 
-function persistWorkspaceState(state: Pick<AppState, 'workspaces' | 'activeWorkspaceId' | 'layoutByWorkspaceId' | 'activePaneIdByWorkspaceId' | 'activeSessionIdByWorkspaceId'>): void {
+function persistWorkspaceState(state: Pick<AppState, 'workspaces' | 'activeWorkspaceId' | 'layoutByWorkspaceId' | 'activePaneIdByWorkspaceId' | 'activeSessionIdByWorkspaceId' | 'previewUrlByWorkspaceId' | 'previewPanelWidthByWorkspaceId' | 'previewPanelHiddenByWorkspaceId'>): void {
   if (typeof localStorage === 'undefined') return
   const persistedState: PersistedWorkspaceState = {
     workspaces: state.workspaces,
@@ -544,6 +598,22 @@ function persistWorkspaceState(state: Pick<AppState, 'workspaces' | 'activeWorks
     layoutByWorkspaceId: state.layoutByWorkspaceId,
     activePaneIdByWorkspaceId: state.activePaneIdByWorkspaceId,
     activeSessionIdByWorkspaceId: state.activeSessionIdByWorkspaceId,
+    previewUrlByWorkspaceId: state.previewUrlByWorkspaceId,
+    previewPanelWidthByWorkspaceId: state.previewPanelWidthByWorkspaceId,
+    previewPanelHiddenByWorkspaceId: state.previewPanelHiddenByWorkspaceId,
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState))
+}
+
+function normalizePreviewUrl(url: string): string | undefined {
+  const trimmed = url.trim()
+  if (!trimmed) return undefined
+  const withProtocol = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`
+  try {
+    const parsed = new URL(withProtocol)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined
+    return parsed.toString()
+  } catch {
+    return undefined
+  }
 }

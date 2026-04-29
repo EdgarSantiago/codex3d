@@ -41,6 +41,23 @@ export type Workspace = {
   updatedAt: number
 }
 
+export type DevTerminal = {
+  id: string
+  workspaceId: string
+  name: string
+  cwd: string
+  shell: string
+  status: AgentStatus
+  createdAt: number
+  updatedAt: number
+}
+
+export type CreateDevTerminalInput = {
+  workspaceId: string
+  cwd: string
+  name?: string
+}
+
 export type ProviderDetectionResult = {
   provider: AgentProvider
   found: boolean

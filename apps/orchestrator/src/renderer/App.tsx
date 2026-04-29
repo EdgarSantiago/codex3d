@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
-import type { AgentRole, AgentSession, LocalAgent, LocalSkill } from '../shared/types'
+import type { AgentRole, AgentSession, DevTerminal, LocalAgent, LocalSkill } from '../shared/types'
 import { SessionsPage } from './components/SessionsPage'
 import { useAppStore } from './stores/appStore'
 
-const navItems = ['Sessions', 'Skills & Agents', 'Settings'] as const
-type Page = typeof navItems[number]
+const navItems = [
+  { label: 'Sessions', icon: '⌘' },
+  { label: 'Skills & Agents', icon: '✦' },
+  { label: 'Settings', icon: '⚙' },
+] as const
+type Page = typeof navItems[number]['label']
 
 const roles: AgentRole[] = ['manual', 'planner', 'implementer', 'verifier', 'reviewer', 'tester', 'researcher']
 const quickSkills = ['Codex3D Implementer', 'Codex3D Verifier', 'Codex3D Planner', '/buddy status', '/commit', '/simplify']
@@ -39,10 +43,20 @@ export function App() {
     closePane,
     terminalLayout,
     activePaneId,
+    previewUrlByWorkspaceId,
+    previewPanelWidthByWorkspaceId,
+    previewPanelHiddenByWorkspaceId,
+    setWorkspacePreviewUrl,
+    setWorkspacePreviewPanelWidth,
+    setWorkspacePreviewPanelHidden,
   } = useAppStore()
 
   const [page, setPage] = useState<Page>('Sessions')
   const [role] = useState<AgentRole>('manual')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [devTerminals, setDevTerminals] = useState<DevTerminal[]>([])
+  const [devOutputByTerminal, setDevOutputByTerminal] = useState<Record<string, string>>({})
+  const [activeDevTerminalIdByWorkspaceId, setActiveDevTerminalIdByWorkspaceId] = useState<Record<string, string | undefined>>({})
 
   useEffect(() => {
     void Promise.all([
@@ -67,6 +81,34 @@ export function App() {
       offStatus()
     }
   }, [appendOutput, setDetections, setLocalAgents, setLocalSkills, setOutputBySession, setSessions, upsertSession])
+
+  useEffect(() => {
+    void Promise.all([
+      window.orchestrator.devTerminals.list(),
+      window.orchestrator.devTerminals.outputs(),
+    ]).then(([terminals, outputs]) => {
+      setDevTerminals(terminals)
+      setDevOutputByTerminal(outputs)
+    })
+
+    const offOutput = window.orchestrator.devTerminals.onOutput((event: { terminalId: string; chunk: string }) => {
+      setDevOutputByTerminal(current => ({
+        ...current,
+        [event.terminalId]: `${current[event.terminalId] ?? ''}${event.chunk}`,
+      }))
+    })
+    const offStatus = window.orchestrator.devTerminals.onStatus((terminal: DevTerminal) => {
+      setDevTerminals(current => current.some(item => item.id === terminal.id)
+        ? current.map(item => item.id === terminal.id ? terminal : item)
+        : [...current, terminal])
+    })
+
+    return () => {
+      offOutput()
+      offStatus()
+    }
+  }, [])
+
 
   const activeWorkspace = workspaces.find(workspace => workspace.id === activeWorkspaceId)
   const workspaceSessions = sessions.filter(session => session.workspaceId === activeWorkspaceId)
@@ -125,34 +167,82 @@ export function App() {
     await window.orchestrator.workspaces.openInVSCode(path)
   }
 
+  async function createDevTerminal() {
+    if (!activeWorkspace) return
+    const terminal = await window.orchestrator.devTerminals.create({
+      workspaceId: activeWorkspace.id,
+      cwd: activeWorkspace.path,
+      name: `Dev ${devTerminals.filter(item => item.workspaceId === activeWorkspace.id).length + 1}`,
+    })
+    setDevTerminals(current => current.some(item => item.id === terminal.id) ? current : [...current, terminal])
+    setActiveDevTerminalIdByWorkspaceId(current => ({ ...current, [activeWorkspace.id]: terminal.id }))
+  }
+
+  async function closeDevTerminal(terminalId: string) {
+    await window.orchestrator.devTerminals.remove(terminalId)
+    setDevTerminals(current => current.filter(terminal => terminal.id !== terminalId))
+    setDevOutputByTerminal(current => {
+      const { [terminalId]: _removed, ...next } = current
+      return next
+    })
+  }
+
+  function selectDevTerminal(terminalId: string) {
+    if (!activeWorkspace) return
+    setActiveDevTerminalIdByWorkspaceId(current => ({ ...current, [activeWorkspace.id]: terminalId }))
+  }
+
+  function sendDevTerminalInput(terminalId: string, input: string) {
+    void window.orchestrator.devTerminals.sendInput(terminalId, input)
+  }
+
+  function resizeDevTerminal(terminalId: string, cols: number, rows: number) {
+    void window.orchestrator.devTerminals.resize(terminalId, cols, rows)
+  }
+
   function resizeTerminal(sessionId: string, cols: number, rows: number) {
     void window.orchestrator.sessions.resize(sessionId, cols, rows)
   }
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
+        <button
+          type="button"
+          className="sidebar-collapse-button"
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          onClick={() => setSidebarCollapsed(collapsed => !collapsed)}
+        >
+          <span className={`sidebar-collapse-icon ${sidebarCollapsed ? 'expand' : 'collapse'}`} aria-hidden="true" />
+        </button>
         <div className="brand">
           <div className="brand-mark">C3D</div>
-          <div>
+          <div className="brand-copy">
             <strong>Codex3D</strong>
             <span>Orchestrator</span>
           </div>
         </div>
         <nav>
           {navItems.map(item => (
-            <button key={item} className={item === page ? 'active' : ''} onClick={() => setPage(item)}>{item}</button>
+            <button key={item.label} className={item.label === page ? 'active' : ''} aria-label={item.label} onClick={() => setPage(item.label)}>
+              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+              <span className="nav-label">{item.label}</span>
+              <span className="nav-tooltip" role="tooltip">{item.label}</span>
+            </button>
           ))}
         </nav>
       </aside>
 
       <main className="content">
-        <header className="topbar">
-          <div>
-            <h1>{page}</h1>
-            <p>{getPageDescription(page)}</p>
-          </div>
-        </header>
+        {page !== 'Sessions' ? (
+          <header className="topbar">
+            <div>
+              <h1>{page}</h1>
+              <p>{getPageDescription(page)}</p>
+            </div>
+          </header>
+        ) : null}
 
         {page === 'Sessions' && (
           <SessionsPage
@@ -180,6 +270,24 @@ export function App() {
             onRenameSession={renamePersistedSession}
             onSendInput={sendSessionInput}
             onResizeTerminal={resizeTerminal}
+            devTerminals={devTerminals.filter(terminal => terminal.workspaceId === activeWorkspaceId)}
+            activeDevTerminalId={activeWorkspaceId ? activeDevTerminalIdByWorkspaceId[activeWorkspaceId] : undefined}
+            devOutputByTerminal={devOutputByTerminal}
+            previewUrl={activeWorkspaceId ? previewUrlByWorkspaceId[activeWorkspaceId] : undefined}
+            previewPanelWidth={activeWorkspaceId ? previewPanelWidthByWorkspaceId[activeWorkspaceId] : undefined}
+            previewPanelHidden={activeWorkspaceId ? Boolean(previewPanelHiddenByWorkspaceId[activeWorkspaceId]) : false}
+            onSetPreviewUrl={setWorkspacePreviewUrl}
+            onSetPreviewPanelWidth={(width: number) => {
+              if (activeWorkspaceId) setWorkspacePreviewPanelWidth(activeWorkspaceId, width)
+            }}
+            onSetPreviewPanelHidden={(hidden: boolean) => {
+              if (activeWorkspaceId) setWorkspacePreviewPanelHidden(activeWorkspaceId, hidden)
+            }}
+            onCreateDevTerminal={createDevTerminal}
+            onSelectDevTerminal={selectDevTerminal}
+            onCloseDevTerminal={closeDevTerminal}
+            onSendDevInput={sendDevTerminalInput}
+            onResizeDevTerminal={resizeDevTerminal}
           />
         )}
         {page === 'Skills & Agents' && renderSkillsAndAgents(localAgents, localSkills)}
