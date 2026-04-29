@@ -224,6 +224,35 @@ h2 {
   color: #fecaca;
 }
 
+.workspace-header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.workspace-header-row span {
+  min-width: 0;
+  flex: 1;
+}
+
+.workspace-open-code-button {
+  flex-shrink: 0;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.42);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workspace-open-code-button:hover:not(:disabled) {
+  border-color: rgba(239, 68, 68, 0.7);
+  color: #fff;
+  background: rgba(220, 38, 38, 0.78);
+}
+
 .sessions-workspace-switcher span {
   overflow: hidden;
   color: var(--muted);
@@ -248,9 +277,45 @@ h2 {
   min-width: 0;
   min-height: 0;
   flex: 1;
-  gap: 4px;
   padding: 4px;
   background: #000;
+}
+
+.terminal-split-child {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-grow: 0;
+  flex-shrink: 1;
+}
+
+.terminal-resize-handle {
+  position: relative;
+  z-index: 3;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: transparent;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.terminal-resize-handle:hover,
+.terminal-resizing .terminal-resize-handle:hover {
+  background: rgba(239, 68, 68, 0.35);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.5);
+}
+
+.terminal-resize-handle-horizontal {
+  width: 8px;
+  cursor: col-resize;
+}
+
+.terminal-resize-handle-vertical {
+  height: 8px;
+  cursor: row-resize;
+}
+
+body.terminal-resizing {
+  user-select: none;
 }
 
 .terminal-split-horizontal {

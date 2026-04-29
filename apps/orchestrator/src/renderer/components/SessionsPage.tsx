@@ -9,6 +9,7 @@ type SessionsPageProps = {
   activeWorkspaceId?: string
   onSelectWorkspace: (workspaceId: string) => void
   onAddWorkspace: () => Promise<void>
+  onOpenWorkspaceInVSCode: (path: string) => Promise<void>
   sessions: AgentSession[]
   selectedSessionId?: string
   outputBySession: Record<string, string>
@@ -18,6 +19,7 @@ type SessionsPageProps = {
   onSelectPane: (paneId: string) => void
   onSelectPaneSession: (paneId: string, sessionId: string) => void
   onSplitPane: (paneId: string, orientation: TerminalSplitOrientation) => void
+  onResizeSplit: (splitId: string, sizes: number[]) => void
   onMoveSessionToPane: (sessionId: string, targetPaneId: string) => void
   onClosePane: (paneId: string) => void
   onLaunchSession: () => Promise<void>
@@ -34,6 +36,7 @@ export function SessionsPage({
   activeWorkspaceId,
   onSelectWorkspace,
   onAddWorkspace,
+  onOpenWorkspaceInVSCode,
   sessions,
   selectedSessionId,
   outputBySession,
@@ -43,6 +46,7 @@ export function SessionsPage({
   onSelectPane,
   onSelectPaneSession,
   onSplitPane,
+  onResizeSplit,
   onMoveSessionToPane,
   onClosePane,
   onLaunchSession,
@@ -124,6 +128,7 @@ export function SessionsPage({
   }, [onClosePane, pendingClosePaneId])
 
   const sessionsById = new Map(sessions.map(session => [session.id, session]))
+  const activeWorkspace = workspaces.find(workspace => workspace.id === activeWorkspaceId)
 
   return (
     <div className="sessions-shell">
@@ -142,7 +147,19 @@ export function SessionsPage({
           ))}
           <button type="button" className="workspace-chip add" onClick={() => void onAddWorkspace()}>+ Add</button>
         </div>
-        <span>{workspaces.find(workspace => workspace.id === activeWorkspaceId)?.path ?? 'No workspace selected'}</span>
+        <div className="workspace-header-row">
+          <span>{activeWorkspace?.path ?? 'No workspace selected'}</span>
+          <button
+            type="button"
+            className="workspace-open-code-button"
+            disabled={!activeWorkspace}
+            onClick={() => {
+              if (activeWorkspace) void onOpenWorkspaceInVSCode(activeWorkspace.path)
+            }}
+          >
+            Open in VS Code
+          </button>
+        </div>
       </div>
 
       <div className="tabbed-sessions-page" aria-busy={busy}>
@@ -155,6 +172,7 @@ export function SessionsPage({
         onSelectSession={onSelectSession}
         onSelectPaneSession={onSelectPaneSession}
         onSplitPane={onSplitPane}
+        onResizeSplit={onResizeSplit}
         onMoveSessionToPane={onMoveSessionToPane}
         onClosePane={setPendingClosePaneId}
         onRequestCloseSession={session => {
@@ -244,6 +262,72 @@ export function SessionsPage({
   )
 }
 
+type SplitResizeHandleProps = {
+  orientation: TerminalSplitOrientation
+  sizes: number[]
+  index: number
+  onResize: (sizes: number[]) => void
+  onReset: () => void
+}
+
+function SplitResizeHandle({ orientation, sizes, index, onResize, onReset }: SplitResizeHandleProps) {
+  function startResize(event: React.PointerEvent<HTMLDivElement>) {
+    const split = event.currentTarget.parentElement
+    if (!split) return
+    event.preventDefault()
+    const rect = split.getBoundingClientRect()
+    const startPosition = orientation === 'horizontal' ? event.clientX : event.clientY
+    const totalPixels = orientation === 'horizontal' ? rect.width : rect.height
+    const startSizes = [...sizes]
+    const previousSize = startSizes[index]
+    const nextSize = startSizes[index + 1]
+    const pairTotal = previousSize + nextSize
+    const minimum = Math.min(30, pairTotal / 2)
+
+    function move(pointerEvent: PointerEvent) {
+      const currentPosition = orientation === 'horizontal' ? pointerEvent.clientX : pointerEvent.clientY
+      const deltaPercent = ((currentPosition - startPosition) / totalPixels) * 100
+      const resizedPrevious = clamp(previousSize + deltaPercent, minimum, pairTotal - minimum)
+      const nextSizes = [...startSizes]
+      nextSizes[index] = resizedPrevious
+      nextSizes[index + 1] = pairTotal - resizedPrevious
+      onResize(nextSizes)
+    }
+
+    function stop() {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', stop)
+      document.body.classList.remove('terminal-resizing')
+    }
+
+    document.body.classList.add('terminal-resizing')
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', stop, { once: true })
+  }
+
+  return (
+    <div
+      className={`terminal-resize-handle terminal-resize-handle-${orientation}`}
+      role="separator"
+      aria-orientation={orientation === 'horizontal' ? 'vertical' : 'horizontal'}
+      onPointerDown={startResize}
+      onDoubleClick={onReset}
+    />
+  )
+}
+
+function normalizeSizes(sizes: number[] | undefined, childCount: number): number[] {
+  if (!childCount) return []
+  const fallback = 100 / childCount
+  const next = Array.from({ length: childCount }, (_, index) => Math.max(1, sizes?.[index] ?? fallback))
+  const total = next.reduce((sum, size) => sum + size, 0)
+  return next.map(size => (size / total) * 100)
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value))
+}
+
 type SplitNodeViewProps = {
   node: TerminalLayoutNode
   sessionsById: Map<string, AgentSession>
@@ -253,6 +337,7 @@ type SplitNodeViewProps = {
   onSelectSession: (sessionId: string) => void
   onSelectPaneSession: (paneId: string, sessionId: string) => void
   onSplitPane: (paneId: string, orientation: TerminalSplitOrientation) => void
+  onResizeSplit: (splitId: string, sizes: number[]) => void
   onMoveSessionToPane: (sessionId: string, targetPaneId: string) => void
   onClosePane: (paneId: string) => void
   onRequestCloseSession: (session: AgentSession) => void
@@ -267,9 +352,28 @@ type SplitNodeViewProps = {
 function SplitNodeView(props: SplitNodeViewProps) {
   const { node } = props
   if (node.type === 'split') {
+    const sizes = normalizeSizes(node.sizes, node.children.length)
     return (
       <div className={`terminal-split terminal-split-${node.orientation}`}>
-        {node.children.map(child => <SplitNodeView key={child.id} {...props} node={child} />)}
+        {node.children.map((child, index) => (
+          <div
+            key={child.id}
+            className="terminal-split-child"
+            style={{ flexBasis: `${sizes[index]}%` }}
+          >
+            <SplitNodeView {...props} node={child} />
+          </div>
+        )).flatMap((child, index) => index === node.children.length - 1 ? [child] : [
+          child,
+          <SplitResizeHandle
+            key={`${node.id}-resize-${index}`}
+            orientation={node.orientation}
+            sizes={sizes}
+            index={index}
+            onResize={nextSizes => props.onResizeSplit(node.id, nextSizes)}
+            onReset={() => props.onResizeSplit(node.id, Array.from({ length: node.children.length }, () => 100 / node.children.length))}
+          />,
+        ])}
       </div>
     )
   }

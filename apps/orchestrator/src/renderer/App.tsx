@@ -33,6 +33,7 @@ export function App() {
     setActivePane,
     selectPaneSession,
     splitPane,
+    resizeSplit,
     moveSessionToPane,
     removeSessionFromLayout,
     closePane,
@@ -120,6 +121,10 @@ export function App() {
     upsertSession(session)
   }
 
+  async function openWorkspaceInVSCode(path: string) {
+    await window.orchestrator.workspaces.openInVSCode(path)
+  }
+
   function resizeTerminal(sessionId: string, cols: number, rows: number) {
     void window.orchestrator.sessions.resize(sessionId, cols, rows)
   }
@@ -155,6 +160,7 @@ export function App() {
             activeWorkspaceId={activeWorkspaceId}
             onSelectWorkspace={setActiveWorkspace}
             onAddWorkspace={chooseWorkspaceFolder}
+            onOpenWorkspaceInVSCode={openWorkspaceInVSCode}
             sessions={workspaceSessions}
             selectedSessionId={activeSessionId}
             outputBySession={outputBySession}
@@ -164,6 +170,7 @@ export function App() {
             onSelectPane={setActivePane}
             onSelectPaneSession={selectPaneSession}
             onSplitPane={splitPane}
+            onResizeSplit={resizeSplit}
             onMoveSessionToPane={moveSessionToPane}
             onClosePane={closePane}
             onLaunchSession={launchCodex3D}

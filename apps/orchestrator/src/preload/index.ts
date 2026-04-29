@@ -25,6 +25,7 @@ const api = {
   },
   workspaces: {
     chooseFolder: () => ipcRenderer.invoke('workspaces:chooseFolder') as Promise<string | undefined>,
+    openInVSCode: (path: string) => ipcRenderer.invoke('workspaces:openInVSCode', { path }) as Promise<void>,
   },
   sessions: {
     list: () => ipcRenderer.invoke('sessions:list') as Promise<AgentSession[]>,

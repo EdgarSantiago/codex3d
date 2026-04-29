@@ -15,6 +15,7 @@ export type TerminalLayoutNode =
       id: string
       orientation: TerminalSplitOrientation
       children: TerminalLayoutNode[]
+      sizes?: number[]
     }
 
 type PersistedWorkspaceState = {
@@ -55,6 +56,7 @@ type AppState = {
   selectPaneSession: (paneId: string, sessionId: string) => void
   addSessionToActivePane: (sessionId: string) => void
   splitPane: (paneId: string, orientation: TerminalSplitOrientation) => void
+  resizeSplit: (splitId: string, sizes: number[]) => void
   moveSessionToPane: (sessionId: string, targetPaneId: string) => void
   removeSessionFromLayout: (sessionId: string) => void
   closePane: (paneId: string) => void
@@ -235,6 +237,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       activePaneId: newPaneId,
     })
   }),
+  resizeSplit: (splitId, sizes) => set(state => applyWorkspaceLayoutUpdate(state, layout => resizeSplitNode(layout, splitId, sizes), {})),
   moveSessionToPane: (sessionId, targetPaneId) => set(state => applyWorkspaceLayoutUpdate(state, layout => updatePane(
     removeSessionFromLayout(layout, sessionId, targetPaneId),
     targetPaneId,
@@ -344,6 +347,7 @@ function splitPaneNode(
       type: 'split',
       id: `split-${crypto.randomUUID()}`,
       orientation,
+      sizes: [50, 50],
       children: [
         node,
         {
@@ -358,6 +362,28 @@ function splitPaneNode(
     ...node,
     children: node.children.map(child => splitPaneNode(child, paneId, orientation, newPaneId)),
   }
+}
+
+function resizeSplitNode(node: TerminalLayoutNode, splitId: string, sizes: number[]): TerminalLayoutNode {
+  if (node.type === 'pane') return node
+  if (node.id === splitId) {
+    return {
+      ...node,
+      sizes: normalizeSplitSizes(sizes, node.children.length),
+    }
+  }
+  return {
+    ...node,
+    children: node.children.map(child => resizeSplitNode(child, splitId, sizes)),
+  }
+}
+
+function normalizeSplitSizes(sizes: number[] | undefined, childCount: number): number[] {
+  if (!childCount) return []
+  const fallback = 100 / childCount
+  const next = Array.from({ length: childCount }, (_, index) => Math.max(1, sizes?.[index] ?? fallback))
+  const total = next.reduce((sum, size) => sum + size, 0)
+  return next.map(size => (size / total) * 100)
 }
 
 function removeSessionFromLayout(node: TerminalLayoutNode, sessionId: string, exceptPaneId?: string): TerminalLayoutNode {

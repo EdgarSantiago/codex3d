@@ -35,6 +35,10 @@ export const renameSessionSchema = z.object({
   name: z.string().min(1),
 })
 
+export const openWorkspaceSchema = z.object({
+  path: z.string().min(1),
+})
+
 export const workspaceSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),

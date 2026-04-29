@@ -1,10 +1,13 @@
-import { ipcMain, BrowserWindow, dialog } from 'electron'
+import { ipcMain, BrowserWindow, dialog, shell } from 'electron'
+import { spawn } from 'child_process'
+import { pathToFileURL } from 'url'
 import { listAgentAdapters } from '../agents/registry'
 import { listLocalClaudeAgents } from '../agents/localAgents'
 import { listLocalClaudeSkills } from '../skills/localSkills'
 import { sessionManager } from '../sessions/sessionManager'
 import {
   launchAgentSchema,
+  openWorkspaceSchema,
   renameSessionSchema,
   resizeSessionSchema,
   sendInputSchema,
@@ -39,6 +42,15 @@ export function registerIpc(mainWindow: BrowserWindow): void {
       title: 'Select workspace folder',
     })
     return result.canceled ? undefined : result.filePaths[0]
+  })
+
+  ipcMain.handle('workspaces:openInVSCode', async (_event, input: unknown) => {
+    const parsed = openWorkspaceSchema.parse(input)
+    try {
+      await openVSCodeNewWindow(parsed.path)
+    } catch {
+      await shell.openExternal(`vscode://file${pathToFileURL(parsed.path).pathname}`)
+    }
   })
 
   ipcMain.handle('sessions:list', () => sessionManager.list())
@@ -77,5 +89,21 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('sessions:stop', (_event, input: unknown) => {
     const parsed = stopSessionSchema.parse(input)
     sessionManager.stop(parsed.sessionId)
+  })
+}
+
+function openVSCodeNewWindow(workspacePath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('code', ['--new-window', workspacePath], {
+      detached: true,
+      stdio: 'ignore',
+      shell: process.platform === 'win32',
+      windowsHide: true,
+    })
+    child.once('error', reject)
+    child.once('spawn', () => {
+      child.unref()
+      resolve()
+    })
   })
 }
