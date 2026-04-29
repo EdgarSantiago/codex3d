@@ -5,6 +5,7 @@ import { listLocalClaudeSkills } from '../skills/localSkills'
 import { sessionManager } from '../sessions/sessionManager'
 import {
   launchAgentSchema,
+  renameSessionSchema,
   resizeSessionSchema,
   sendInputSchema,
   stopSessionSchema,
@@ -42,6 +43,8 @@ export function registerIpc(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('sessions:list', () => sessionManager.list())
 
+  ipcMain.handle('sessions:outputs', () => sessionManager.outputs())
+
   ipcMain.handle('sessions:launch', (_event, input: unknown) => {
     return sessionManager.launch(launchAgentSchema.parse(input))
   })
@@ -59,6 +62,16 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('sessions:restart', (_event, input: unknown) => {
     const parsed = stopSessionSchema.parse(input)
     return sessionManager.restart(parsed.sessionId)
+  })
+
+  ipcMain.handle('sessions:rename', (_event, input: unknown) => {
+    const parsed = renameSessionSchema.parse(input)
+    return sessionManager.rename(parsed.sessionId, parsed.name)
+  })
+
+  ipcMain.handle('sessions:remove', (_event, input: unknown) => {
+    const parsed = stopSessionSchema.parse(input)
+    sessionManager.remove(parsed.sessionId)
   })
 
   ipcMain.handle('sessions:stop', (_event, input: unknown) => {

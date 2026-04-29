@@ -91,11 +91,30 @@ export function TerminalPane({ sessionId, output, onInput, onResize, onClear, on
     }
 
     terminal.attachCustomKeyEventHandler(event => {
-      if (event.type !== 'keydown' || !event.ctrlKey || event.metaKey || event.altKey) {
+      if (event.type !== 'keydown') return true
+
+      const key = event.key.toLowerCase()
+      const usesPrimaryModifier = (event.ctrlKey || event.metaKey) && !event.altKey
+
+      if (usesPrimaryModifier && key === 'c') {
+        if (!terminal.hasSelection()) return true
+        event.preventDefault()
+        void navigator.clipboard.writeText(terminal.getSelection()).then(() => terminal.clearSelection())
+        return false
+      }
+
+      if (usesPrimaryModifier && key === 'v') {
+        event.preventDefault()
+        void navigator.clipboard.readText().then(text => {
+          if (text) onInputRef.current(text)
+        })
+        return false
+      }
+
+      if (!event.ctrlKey || event.metaKey || event.altKey) {
         return true
       }
 
-      const key = event.key.toLowerCase()
       if (key === 'l') {
         event.preventDefault()
         terminal.clear()

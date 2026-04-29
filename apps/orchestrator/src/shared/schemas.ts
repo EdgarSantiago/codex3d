@@ -30,6 +30,11 @@ export const stopSessionSchema = z.object({
   sessionId: z.string().min(1),
 })
 
+export const renameSessionSchema = z.object({
+  sessionId: z.string().min(1),
+  name: z.string().min(1),
+})
+
 export const workspaceSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),

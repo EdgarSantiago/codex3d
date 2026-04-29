@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { AgentRole, AgentSession, LocalAgent, LocalSkill, WorkspaceMode } from '../shared/types'
+import type { AgentRole, AgentSession, LocalAgent, LocalSkill } from '../shared/types'
 import { SessionsPage } from './components/SessionsPage'
-import { WorkspacesPage } from './components/WorkspacesPage'
 import { useAppStore } from './stores/appStore'
 
-const navItems = ['Dashboard', 'Workspaces', 'Sessions', 'Skills & Agents', 'Settings'] as const
+const navItems = ['Sessions', 'Skills & Agents', 'Settings'] as const
 type Page = typeof navItems[number]
 
 const roles: AgentRole[] = ['manual', 'planner', 'implementer', 'verifier', 'reviewer', 'tester', 'researcher']
@@ -16,8 +15,6 @@ export function App() {
     activeWorkspaceId,
     addWorkspace,
     setActiveWorkspace,
-    updateWorkspace,
-    removeWorkspace,
     sessions,
     activeSessionId,
     outputBySession,
@@ -25,6 +22,7 @@ export function App() {
     setSessions,
     upsertSession,
     setActiveSessionId,
+    setOutputBySession,
     appendOutput,
     setDetections,
     localAgents,
@@ -37,16 +35,22 @@ export function App() {
     splitPane,
     moveSessionToPane,
     removeSessionFromLayout,
+    closePane,
     terminalLayout,
     activePaneId,
   } = useAppStore()
 
-  const [page, setPage] = useState<Page>('Dashboard')
-  const [role, setRole] = useState<AgentRole>('manual')
-
+  const [page, setPage] = useState<Page>('Sessions')
+  const [role] = useState<AgentRole>('manual')
 
   useEffect(() => {
-    void window.orchestrator.sessions.list().then(setSessions)
+    void Promise.all([
+      window.orchestrator.sessions.list(),
+      window.orchestrator.sessions.outputs(),
+    ]).then(([sessions, outputBySession]) => {
+      setSessions(sessions)
+      setOutputBySession(outputBySession)
+    })
     void window.orchestrator.providers.detect().then(setDetections)
     void window.orchestrator.agents.listLocalClaude().then(setLocalAgents)
     void window.orchestrator.skills.listLocalClaude().then(setLocalSkills)
@@ -61,7 +65,7 @@ export function App() {
       offOutput()
       offStatus()
     }
-  }, [appendOutput, setDetections, setLocalAgents, setLocalSkills, setSessions, upsertSession])
+  }, [appendOutput, setDetections, setLocalAgents, setLocalSkills, setOutputBySession, setSessions, upsertSession])
 
   const activeWorkspace = workspaces.find(workspace => workspace.id === activeWorkspaceId)
   const workspaceSessions = sessions.filter(session => session.workspaceId === activeWorkspaceId)
@@ -75,7 +79,7 @@ export function App() {
 
   async function launchCodex3D() {
     if (!activeWorkspace) {
-      setPage('Workspaces')
+      await chooseWorkspaceFolder()
       return
     }
     const terminalNumber = workspaceSessions.length + 1
@@ -107,8 +111,13 @@ export function App() {
   }
 
   async function closeSession(sessionId: string) {
-    await window.orchestrator.sessions.stop(sessionId)
+    await window.orchestrator.sessions.remove(sessionId)
     removeSessionFromLayout(sessionId)
+  }
+
+  async function renamePersistedSession(sessionId: string, name: string) {
+    const session = await window.orchestrator.sessions.rename(sessionId, name)
+    upsertSession(session)
   }
 
   function resizeTerminal(sessionId: string, cols: number, rows: number) {
@@ -138,21 +147,8 @@ export function App() {
             <h1>{page}</h1>
             <p>{getPageDescription(page)}</p>
           </div>
-          <button className="primary" onClick={launchCodex3D}>Launch Codex3D</button>
         </header>
 
-        {page === 'Dashboard' && renderDashboard({ detections, role, setRole, activeWorkspace })}
-        {page === 'Workspaces' && (
-          <WorkspacesPage
-            workspaces={workspaces}
-            activeWorkspaceId={activeWorkspaceId}
-            sessionCounts={sessionCountsByWorkspace(sessions)}
-            onChooseFolder={chooseWorkspaceFolder}
-            onSelectWorkspace={setActiveWorkspace}
-            onUpdateWorkspace={updateWorkspace}
-            onRemoveWorkspace={removeWorkspace}
-          />
-        )}
         {page === 'Sessions' && (
           <SessionsPage
             workspaces={workspaces}
@@ -169,10 +165,12 @@ export function App() {
             onSelectPaneSession={selectPaneSession}
             onSplitPane={splitPane}
             onMoveSessionToPane={moveSessionToPane}
+            onClosePane={closePane}
             onLaunchSession={launchCodex3D}
             onRestartSession={restartSession}
             onStopSession={stopSession}
             onCloseSession={closeSession}
+            onRenameSession={renamePersistedSession}
             onSendInput={sendSessionInput}
             onResizeTerminal={resizeTerminal}
           />
@@ -186,10 +184,6 @@ export function App() {
 
 function getPageDescription(page: Page): string {
   switch (page) {
-    case 'Dashboard':
-      return 'Launch and coordinate Codex3D sessions inside the active workspace.'
-    case 'Workspaces':
-      return 'Select local project folders and choose where new Codex3D terminals open.'
     case 'Sessions':
       return 'Interact with running Codex3D sessions for the active workspace.'
     case 'Skills & Agents':
@@ -197,60 +191,6 @@ function getPageDescription(page: Page): string {
     case 'Settings':
       return 'Configure providers, defaults, terminal behavior, and safety controls.'
   }
-}
-
-function renderDashboard(props: {
-  detections: ReturnType<typeof useAppStore.getState>['detections']
-  role: AgentRole
-  setRole: (role: AgentRole) => void
-  activeWorkspace?: ReturnType<typeof useAppStore.getState>['workspaces'][number]
-}) {
-  return (
-    <>
-      <section className="grid two">
-        <div className="card">
-          <h2>Provider health</h2>
-          {props.detections.length === 0 ? <p>Detecting providers...</p> : props.detections.map(detection => (
-            <div className="row" key={detection.provider}>
-              <div>
-                <strong>{detection.provider}</strong>
-                <span>{detection.version ?? detection.error ?? 'Not configured'}</span>
-              </div>
-              <span className={detection.found ? 'pill ok' : 'pill'}>{detection.found ? 'Ready' : 'Missing'}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="card">
-          <h2>Active workspace</h2>
-          {props.activeWorkspace ? (
-            <div className="row workspace-row">
-              <div>
-                <strong>{props.activeWorkspace.name}</strong>
-                <span>{props.activeWorkspace.path}</span>
-              </div>
-              <span className="pill ok">{props.activeWorkspace.defaultWorkspaceMode}</span>
-            </div>
-          ) : <p>No workspace selected. Add one from Workspaces.</p>}
-          <div className="form-row">
-            <label>
-              Role
-              <select value={props.role} onChange={event => props.setRole(event.target.value as AgentRole)}>
-                {roles.map(value => <option key={value} value={value}>{value}</option>)}
-              </select>
-            </label>
-          </div>
-        </div>
-      </section>
-
-      <section className="card">
-        <h2>Skills & Agents preview</h2>
-        <div className="skills-grid">
-          {quickSkills.map(item => <div className="skill-tile" key={item}>{item}</div>)}
-        </div>
-      </section>
-    </>
-  )
 }
 
 function renderSkillsAndAgents(localAgents: LocalAgent[], localSkills: LocalSkill[]) {
@@ -304,14 +244,6 @@ function renderSkillsAndAgents(localAgents: LocalAgent[], localSkills: LocalSkil
       </div>
     </section>
   )
-}
-
-function sessionCountsByWorkspace(sessions: AgentSession[]): Record<string, number> {
-  return sessions.reduce<Record<string, number>>((counts, session) => {
-    if (!session.workspaceId) return counts
-    counts[session.workspaceId] = (counts[session.workspaceId] ?? 0) + 1
-    return counts
-  }, {})
 }
 
 function renderSettings(detections: ReturnType<typeof useAppStore.getState>['detections']) {

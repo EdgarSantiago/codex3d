@@ -15,6 +15,7 @@ export type AgentSession = {
   cwd: string
   command: string
   args: string[]
+  resumeArgs?: string[]
   status: AgentStatus
   createdAt: number
   updatedAt: number

@@ -28,11 +28,14 @@ const api = {
   },
   sessions: {
     list: () => ipcRenderer.invoke('sessions:list') as Promise<AgentSession[]>,
+    outputs: () => ipcRenderer.invoke('sessions:outputs') as Promise<Record<string, string>>,
     launch: (input: LaunchAgentInput) => ipcRenderer.invoke('sessions:launch', input) as Promise<AgentSession>,
     sendInput: (sessionId: string, input: string) => ipcRenderer.invoke('sessions:sendInput', { sessionId, input }) as Promise<void>,
     resize: (sessionId: string, cols: number, rows: number) => ipcRenderer.invoke('sessions:resize', { sessionId, cols, rows }) as Promise<void>,
     stop: (sessionId: string) => ipcRenderer.invoke('sessions:stop', { sessionId }) as Promise<void>,
     restart: (sessionId: string) => ipcRenderer.invoke('sessions:restart', { sessionId }) as Promise<AgentSession>,
+    rename: (sessionId: string, name: string) => ipcRenderer.invoke('sessions:rename', { sessionId, name }) as Promise<AgentSession>,
+    remove: (sessionId: string) => ipcRenderer.invoke('sessions:remove', { sessionId }) as Promise<void>,
     onOutput: (listener: (event: AgentOutputEvent) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: AgentOutputEvent) => listener(payload)
       ipcRenderer.on('agent:output', handler)

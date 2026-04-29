@@ -46,6 +46,7 @@ type AppState = {
   setSessions: (sessions: AgentSession[]) => void
   upsertSession: (session: AgentSession) => void
   setActiveSessionId: (sessionId: string | undefined) => void
+  setOutputBySession: (outputBySession: Record<string, string>) => void
   appendOutput: (sessionId: string, chunk: string) => void
   setDetections: (detections: ProviderDetectionResult[]) => void
   setLocalAgents: (agents: LocalAgent[]) => void
@@ -56,6 +57,8 @@ type AppState = {
   splitPane: (paneId: string, orientation: TerminalSplitOrientation) => void
   moveSessionToPane: (sessionId: string, targetPaneId: string) => void
   removeSessionFromLayout: (sessionId: string) => void
+  closePane: (paneId: string) => void
+  renameSession: (sessionId: string, name: string) => void
 }
 
 const STORAGE_KEY = 'codex3d-orchestrator-workspaces'
@@ -192,6 +195,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistWorkspaceState({ ...state, ...next })
     return next
   }),
+  setOutputBySession: outputBySession => set({ outputBySession }),
   appendOutput: (sessionId, chunk) => set(state => ({
     outputBySession: {
       ...state.outputBySession,
@@ -265,6 +269,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     persistWorkspaceState({ ...state, ...next })
     return next
   }),
+  closePane: paneId => set(state => applyWorkspaceLayoutUpdate(state, layout => closePaneNode(layout, paneId), {})),
+  renameSession: (sessionId, name) => set(state => ({
+    sessions: state.sessions.map(session => session.id === sessionId ? { ...session, name, updatedAt: Date.now() } : session),
+  })),
 }))
 
 type PaneNode = Extract<TerminalLayoutNode, { type: 'pane' }>
@@ -305,6 +313,18 @@ function updatePane(node: TerminalLayoutNode, paneId: string, updater: (pane: Pa
     ...node,
     children: node.children.map(child => updatePane(child, paneId, updater)),
   }
+}
+
+function closePaneNode(node: TerminalLayoutNode, paneId: string): TerminalLayoutNode {
+  if (node.type === 'pane') return node
+
+  const children = node.children
+    .filter(child => child.type !== 'pane' || child.id !== paneId)
+    .map(child => closePaneNode(child, paneId))
+
+  if (children.length === 0) return cloneInitialLayout()
+  if (children.length === 1) return children[0]
+  return { ...node, children }
 }
 
 function hasPane(node: TerminalLayoutNode, paneId: string): boolean {

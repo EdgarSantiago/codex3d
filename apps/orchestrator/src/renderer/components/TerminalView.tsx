@@ -26,13 +26,15 @@ export function TerminalView({ session, output, onInput, onResize, onNewTerminal
     )
   }
 
+  const canResumeCodex3D = session.provider === 'codex3d' && Boolean(session.resumeArgs)
+
   if (session.status === 'stopped' && !output) {
     return (
       <div className="tabbed-terminal-view empty">
         <EmptyTerminalState
           title="Terminal stopped"
-          description="Restart this tab to attach a new process to the same session."
-          actionLabel="Restart Terminal"
+          description={canResumeCodex3D ? `Resume this chat with codex3d --resume ${session.id}` : 'Restart this tab to attach a new process to the same session.'}
+          actionLabel={canResumeCodex3D ? 'Resume Terminal' : 'Restart Terminal'}
           onAction={onRestart}
         />
       </div>
@@ -41,10 +43,18 @@ export function TerminalView({ session, output, onInput, onResize, onNewTerminal
 
   return (
     <div className="tabbed-terminal-view">
+      {session.status === 'stopped' && canResumeCodex3D ? (
+        <div className="terminal-resume-banner">
+          <span>Stopped chat: codex3d --resume {session.id}</span>
+          <button type="button" onClick={onRestart}>Resume</button>
+        </div>
+      ) : null}
       <TerminalPane
         sessionId={session.id}
         output={output}
-        onInput={onInput}
+        onInput={input => {
+          if (session.status !== 'stopped' && session.status !== 'errored') onInput(input)
+        }}
         onResize={onResize}
         onRestart={onRestart}
         onStop={onStop}
