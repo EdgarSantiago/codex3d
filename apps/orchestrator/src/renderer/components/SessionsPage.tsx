@@ -158,6 +158,7 @@ export function SessionsPage({
 
   const sessionsById = new Map(sessions.map(session => [session.id, session]))
   const activeWorkspace = workspaces.find(workspace => workspace.id === activeWorkspaceId)
+  const workspacePath = formatWorkspacePath(activeWorkspace?.path)
 
   return (
     <div className="sessions-shell">
@@ -177,7 +178,13 @@ export function SessionsPage({
           <button type="button" className="workspace-chip add" onClick={() => void onAddWorkspace()}>+ Add</button>
         </div>
         <div className="workspace-header-row">
-          <span>{activeWorkspace?.path ?? 'No workspace selected'}</span>
+          <span title={activeWorkspace?.path}>
+            {workspacePath ? (
+              <>
+                {workspacePath.parent}<b className="workspace-path-leaf">{workspacePath.leaf}</b>
+              </>
+            ) : 'No workspace selected'}
+          </span>
           <button
             type="button"
             className="workspace-open-code-button"
@@ -330,6 +337,15 @@ export function SessionsPage({
       ) : null}
     </div>
   )
+}
+
+function formatWorkspacePath(path: string | undefined): { parent: string; leaf: string } | undefined {
+  if (!path) return undefined
+  const normalized = path.replace(/\\/g, '/')
+  const parts = normalized.split('/').filter(Boolean)
+  const leaf = parts.at(-1) ?? normalized
+  const parent = normalized.endsWith(leaf) ? normalized.slice(0, -leaf.length) : ''
+  return { parent, leaf }
 }
 
 function startRightPanelResize(event: React.PointerEvent<HTMLDivElement>, onResize: (width: number) => void) {

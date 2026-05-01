@@ -7,8 +7,26 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "tsc --noEmit && electron-vite build",
+    "dist": "bun run build && electron-builder --win portable",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit"
+  },
+  "build": {
+    "appId": "com.codex3d.orchestrator",
+    "productName": "Codex3D Orchestrator",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        "portable"
+      ]
+    }
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
@@ -24,6 +42,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "electron": "latest",
+    "electron-builder": "^26.8.1",
     "typescript": "latest"
   },
   "optionalDependencies": {

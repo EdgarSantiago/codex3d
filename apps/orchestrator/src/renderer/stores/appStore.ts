@@ -74,11 +74,7 @@ type AppState = {
 
 const STORAGE_KEY = 'codex3d-orchestrator-workspaces'
 const initialPaneId = 'pane-root'
-const initialLayout: TerminalLayoutNode = {
-  type: 'pane',
-  id: initialPaneId,
-  sessionIds: [],
-}
+const initialLayout: TerminalLayoutNode = createInitialLayout()
 
 const persisted = loadPersistedState()
 
@@ -543,12 +539,39 @@ function getWorkspaceActivePaneId(workspaceId: string | undefined, activePaneIdB
   return workspaceId ? activePaneIdByWorkspaceId[workspaceId] ?? initialPaneId : initialPaneId
 }
 
-function cloneInitialLayout(): TerminalLayoutNode {
+function createInitialLayout(): TerminalLayoutNode {
   return {
-    type: 'pane',
-    id: initialPaneId,
-    sessionIds: [],
+    type: 'split',
+    id: 'split-root',
+    orientation: 'vertical',
+    sizes: [50, 50],
+    children: [
+      {
+        type: 'split',
+        id: 'split-top',
+        orientation: 'horizontal',
+        sizes: [50, 50],
+        children: [
+          { type: 'pane', id: initialPaneId, sessionIds: [] },
+          { type: 'pane', id: 'pane-top-right', sessionIds: [] },
+        ],
+      },
+      {
+        type: 'split',
+        id: 'split-bottom',
+        orientation: 'horizontal',
+        sizes: [50, 50],
+        children: [
+          { type: 'pane', id: 'pane-bottom-left', sessionIds: [] },
+          { type: 'pane', id: 'pane-bottom-right', sessionIds: [] },
+        ],
+      },
+    ],
   }
+}
+
+function cloneInitialLayout(): TerminalLayoutNode {
+  return createInitialLayout()
 }
 
 function workspaceNameFromPath(path: string): string {

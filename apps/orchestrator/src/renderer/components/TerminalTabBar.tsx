@@ -101,10 +101,10 @@ export function TerminalTabBar({
 
       <div className="terminal-tab-actions">
         <button type="button" className="tab-action primary-tab-action" onClick={onNewTerminal} aria-label="New terminal" title="New terminal: start another Codex3D session in this workspace">+</button>
-        <button type="button" className="tab-action" onClick={() => onSplitPane('horizontal')} aria-label="Split panel horizontally" title="Split horizontally: show another panel side-by-side">Split ↔</button>
-        <button type="button" className="tab-action" onClick={() => onSplitPane('vertical')} aria-label="Split panel vertically" title="Split vertically: show another panel above or below">Split ↕</button>
-        <button type="button" className="tab-action" disabled={!selectedSession} onClick={onRestartSelected} aria-label="Restart selected terminal" title="Restart: stop and relaunch the selected terminal in the same workspace folder">Restart</button>
-        <button type="button" className="tab-action" disabled={!selectedSession || selectedSession.status === 'stopped'} onClick={onStopSelected} aria-label="Stop selected terminal" title="Stop: terminate the selected terminal process">Stop</button>
+        <button type="button" className="tab-action" onClick={() => onSplitPane('horizontal')} aria-label="Split panel horizontally" title="Split horizontally: show another panel side-by-side">↔</button>
+        <button type="button" className="tab-action" onClick={() => onSplitPane('vertical')} aria-label="Split panel vertically" title="Split vertically: show another panel above or below">↕</button>
+        <button type="button" className="tab-action" disabled={!selectedSession} onClick={onRestartSelected} aria-label="Restart selected terminal" title="Restart: stop and relaunch the selected terminal in the same workspace folder">↻</button>
+        <button type="button" className="tab-action" disabled={!selectedSession || selectedSession.status === 'stopped'} onClick={onStopSelected} aria-label="Stop selected terminal" title="Stop: terminate the selected terminal process">■</button>
         <button type="button" className="tab-action pane-tab-action" onClick={onClosePane} aria-label="Close split panel" title="Close panel: remove this split panel after confirmation">×</button>
       </div>
     </div>
