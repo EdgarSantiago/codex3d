@@ -21,6 +21,8 @@ export type AgentSession = {
   updatedAt: number
 }
 
+export type SessionCompletionCounts = Record<string, number>
+
 export type LaunchAgentInput = {
   provider: AgentProvider
   role: AgentRole

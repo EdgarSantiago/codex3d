@@ -172,9 +172,14 @@ export function TerminalPane({
     if (!terminal || sessionIdRef.current === sessionId) return
 
     sessionIdRef.current = sessionId
-    writtenLengthRef.current = 0
     terminal.clear()
     terminal.write(sessionId ? `${connectedMessage}\r\n` : `${emptyMessage}\r\n`)
+    if (sessionId && output) {
+      terminal.write(output)
+      writtenLengthRef.current = output.length
+    } else {
+      writtenLengthRef.current = 0
+    }
     window.requestAnimationFrame(() => {
       try {
         fitAddonRef.current?.fit()
@@ -182,7 +187,7 @@ export function TerminalPane({
         // The pane can be hidden or mid-layout when switching workspaces.
       }
     })
-  }, [connectedMessage, emptyMessage, sessionId])
+  }, [connectedMessage, emptyMessage, output, sessionId])
 
   useEffect(() => {
     const terminal = terminalRef.current
@@ -192,7 +197,7 @@ export function TerminalPane({
     if (!nextChunk) return
     terminal.write(nextChunk)
     writtenLengthRef.current = output.length
-  }, [output])
+  }, [output, sessionId])
 
   return <div ref={containerRef} className="xterm-container" />
 }

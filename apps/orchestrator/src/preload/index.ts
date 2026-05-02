@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AgentSession, CreateDevTerminalInput, DevTerminal, LaunchAgentInput, LocalAgent, LocalSkill, ProviderDetectionResult } from '../shared/types'
+import type { AgentSession, CreateDevTerminalInput, DevTerminal, LaunchAgentInput, LocalAgent, LocalSkill, ProviderDetectionResult, SessionCompletionCounts } from '../shared/types'
 
 type ProviderSummary = {
   id: string
@@ -55,6 +55,8 @@ const api = {
   sessions: {
     list: () => ipcRenderer.invoke('sessions:list') as Promise<AgentSession[]>,
     outputs: () => ipcRenderer.invoke('sessions:outputs') as Promise<Record<string, string>>,
+    completionCounts: () => ipcRenderer.invoke('sessions:completionCounts') as Promise<SessionCompletionCounts>,
+    clearCompletionCounts: (sessionIds: string[]) => ipcRenderer.invoke('sessions:clearCompletionCounts', sessionIds) as Promise<SessionCompletionCounts>,
     launch: (input: LaunchAgentInput) => ipcRenderer.invoke('sessions:launch', input) as Promise<AgentSession>,
     sendInput: (sessionId: string, input: string) => ipcRenderer.invoke('sessions:sendInput', { sessionId, input }) as Promise<void>,
     resize: (sessionId: string, cols: number, rows: number) => ipcRenderer.invoke('sessions:resize', { sessionId, cols, rows }) as Promise<void>,

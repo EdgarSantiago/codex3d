@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AgentRole, AgentSession, DevTerminal, LocalAgent, LocalSkill } from '../shared/types'
+import type { AgentRole, AgentSession, DevTerminal, LocalAgent, LocalSkill, SessionCompletionCounts } from '../shared/types'
 import { SessionsPage } from './components/SessionsPage'
 import { useAppStore } from './stores/appStore'
 
@@ -19,6 +19,7 @@ export function App() {
     activeWorkspaceId,
     addWorkspace,
     setActiveWorkspace,
+    removeWorkspace,
     sessions,
     activeSessionId,
     outputBySession,
@@ -57,14 +58,17 @@ export function App() {
   const [devTerminals, setDevTerminals] = useState<DevTerminal[]>([])
   const [devOutputByTerminal, setDevOutputByTerminal] = useState<Record<string, string>>({})
   const [activeDevTerminalIdByWorkspaceId, setActiveDevTerminalIdByWorkspaceId] = useState<Record<string, string | undefined>>({})
+  const [sessionCompletionCounts, setSessionCompletionCounts] = useState<SessionCompletionCounts>({})
 
   useEffect(() => {
     void Promise.all([
       window.orchestrator.sessions.list(),
       window.orchestrator.sessions.outputs(),
-    ]).then(([sessions, outputBySession]) => {
+      window.orchestrator.sessions.completionCounts(),
+    ]).then(([sessions, outputBySession, completionCounts]) => {
       setSessions(sessions)
       setOutputBySession(outputBySession)
+      setSessionCompletionCounts(completionCounts)
     })
     void window.orchestrator.providers.detect().then(setDetections)
     void window.orchestrator.agents.listLocalClaude().then(setLocalAgents)
@@ -72,6 +76,7 @@ export function App() {
 
     const offOutput = window.orchestrator.sessions.onOutput((event: { sessionId: string; chunk: string }) => {
       appendOutput(event.sessionId, event.chunk)
+      void window.orchestrator.sessions.completionCounts().then(setSessionCompletionCounts)
     })
     const offStatus = window.orchestrator.sessions.onStatus((session: AgentSession) => {
       upsertSession(session)
@@ -112,12 +117,35 @@ export function App() {
 
   const activeWorkspace = workspaces.find(workspace => workspace.id === activeWorkspaceId)
   const workspaceSessions = sessions.filter(session => session.workspaceId === activeWorkspaceId)
+  const workspaceCompletionCounts = workspaces.reduce<Record<string, number>>((counts, workspace) => {
+    counts[workspace.id] = sessions
+      .filter(session => session.workspaceId === workspace.id)
+      .reduce((total, session) => total + (sessionCompletionCounts[session.id] ?? 0), 0)
+    return counts
+  }, {})
+
+  async function clearWorkspaceCompletionCount(workspaceId: string) {
+    const workspaceSessionIds = sessions.filter(session => session.workspaceId === workspaceId).map(session => session.id)
+    if (workspaceSessionIds.length === 0) return
+    const completionCounts = await window.orchestrator.sessions.clearCompletionCounts(workspaceSessionIds)
+    setSessionCompletionCounts(completionCounts)
+  }
+
+  async function selectWorkspace(workspaceId: string) {
+    setActiveWorkspace(workspaceId)
+    await clearWorkspaceCompletionCount(workspaceId)
+  }
 
   async function chooseWorkspaceFolder() {
     const path = await window.orchestrator.workspaces.chooseFolder()
     if (!path) return
     addWorkspace(path)
     setPage('Sessions')
+  }
+
+  async function refreshSessionCompletionCounts() {
+    const completionCounts = await window.orchestrator.sessions.completionCounts()
+    setSessionCompletionCounts(completionCounts)
   }
 
   async function launchCodex3D() {
@@ -149,6 +177,13 @@ export function App() {
     await window.orchestrator.sessions.stop(sessionId)
   }
 
+  async function selectSession(sessionId: string) {
+    setActiveSessionId(sessionId)
+    if (!sessionCompletionCounts[sessionId]) return
+    const completionCounts = await window.orchestrator.sessions.clearCompletionCounts([sessionId])
+    setSessionCompletionCounts(completionCounts)
+  }
+
   async function sendSessionInput(sessionId: string, input: string) {
     await window.orchestrator.sessions.sendInput(sessionId, input)
   }
@@ -161,6 +196,35 @@ export function App() {
   async function renamePersistedSession(sessionId: string, name: string) {
     const session = await window.orchestrator.sessions.rename(sessionId, name)
     upsertSession(session)
+  }
+
+  async function closeWorkspace(workspaceId: string) {
+    const workspaceSessionIds = sessions.filter(session => session.workspaceId === workspaceId).map(session => session.id)
+    const workspaceDevTerminalIds = devTerminals.filter(terminal => terminal.workspaceId === workspaceId).map(terminal => terminal.id)
+
+    await Promise.all([
+      ...workspaceSessionIds.map(sessionId => window.orchestrator.sessions.remove(sessionId)),
+      ...workspaceDevTerminalIds.map(terminalId => window.orchestrator.devTerminals.remove(terminalId)),
+    ])
+
+    setDevTerminals(current => current.filter(terminal => terminal.workspaceId !== workspaceId))
+    setDevOutputByTerminal(current => {
+      const next = { ...current }
+      for (const terminalId of workspaceDevTerminalIds) delete next[terminalId]
+      return next
+    })
+    setActiveDevTerminalIdByWorkspaceId(current => {
+      const next = { ...current }
+      delete next[workspaceId]
+      return next
+    })
+    removeWorkspace(workspaceId)
+    setSessions(sessions.filter(session => session.workspaceId !== workspaceId))
+    setSessionCompletionCounts(current => {
+      const next = { ...current }
+      for (const sessionId of workspaceSessionIds) delete next[sessionId]
+      return next
+    })
   }
 
   async function openWorkspaceInVSCode(path: string) {
@@ -248,15 +312,17 @@ export function App() {
           <SessionsPage
             workspaces={workspaces}
             activeWorkspaceId={activeWorkspaceId}
-            onSelectWorkspace={setActiveWorkspace}
+            onSelectWorkspace={workspaceId => void selectWorkspace(workspaceId)}
+            onCloseWorkspace={closeWorkspace}
             onAddWorkspace={chooseWorkspaceFolder}
             onOpenWorkspaceInVSCode={openWorkspaceInVSCode}
             sessions={workspaceSessions}
+            workspaceCompletionCounts={workspaceCompletionCounts}
             selectedSessionId={activeSessionId}
             outputBySession={outputBySession}
             terminalLayout={terminalLayout}
             activePaneId={activePaneId}
-            onSelectSession={setActiveSessionId}
+            onSelectSession={sessionId => void selectSession(sessionId)}
             onSelectPane={setActivePane}
             onSelectPaneSession={selectPaneSession}
             onSplitPane={splitPane}

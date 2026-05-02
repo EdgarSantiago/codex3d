@@ -201,10 +201,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     const sessions = state.sessions.some(current => current.id === session.id)
       ? state.sessions.map(current => current.id === session.id ? session : current)
       : [...state.sessions, session]
-    return {
+    const layoutByWorkspaceId = repairAllWorkspaceLayouts(state.layoutByWorkspaceId, sessions, state.workspaces.map(workspace => workspace.id))
+    const activeWorkspaceId = state.activeWorkspaceId
+    const terminalLayout = getWorkspaceLayout(activeWorkspaceId, layoutByWorkspaceId)
+    const activeSessionIdByWorkspaceId = repairActiveSessions(state.activeSessionIdByWorkspaceId, layoutByWorkspaceId)
+    const activeSessionId = activeWorkspaceId ? activeSessionIdByWorkspaceId[activeWorkspaceId] : state.activeSessionId ?? session.id
+    const next = {
       sessions,
-      activeSessionId: state.activeSessionId ?? session.id,
+      layoutByWorkspaceId,
+      activeSessionIdByWorkspaceId,
+      terminalLayout,
+      activeSessionId,
     }
+    persistWorkspaceState({ ...state, ...next })
+    return next
   }),
   setActiveSessionId: activeSessionId => set(state => {
     const activeSessionIdByWorkspaceId = state.activeWorkspaceId
@@ -449,7 +459,7 @@ function removeSessionFromLayout(node: TerminalLayoutNode, sessionId: string, ex
 function repairLayout(node: TerminalLayoutNode, validSessionIds: string[]): TerminalLayoutNode {
   const valid = new Set(validSessionIds)
   if (node.type === 'pane') {
-    const sessionIds = node.sessionIds.filter(id => valid.has(id))
+    const sessionIds = unique(node.sessionIds.filter(id => valid.has(id)))
     return {
       ...node,
       sessionIds,
@@ -472,6 +482,10 @@ function attachMissingSessions(layout: TerminalLayoutNode, validSessionIds: stri
     sessionIds: [...pane.sessionIds, ...missing],
     activeSessionId: pane.activeSessionId ?? missing[0],
   }))
+}
+
+function unique<T>(items: T[]): T[] {
+  return [...new Set(items)]
 }
 
 function firstPaneId(node: TerminalLayoutNode): string {
@@ -540,34 +554,7 @@ function getWorkspaceActivePaneId(workspaceId: string | undefined, activePaneIdB
 }
 
 function createInitialLayout(): TerminalLayoutNode {
-  return {
-    type: 'split',
-    id: 'split-root',
-    orientation: 'vertical',
-    sizes: [50, 50],
-    children: [
-      {
-        type: 'split',
-        id: 'split-top',
-        orientation: 'horizontal',
-        sizes: [50, 50],
-        children: [
-          { type: 'pane', id: initialPaneId, sessionIds: [] },
-          { type: 'pane', id: 'pane-top-right', sessionIds: [] },
-        ],
-      },
-      {
-        type: 'split',
-        id: 'split-bottom',
-        orientation: 'horizontal',
-        sizes: [50, 50],
-        children: [
-          { type: 'pane', id: 'pane-bottom-left', sessionIds: [] },
-          { type: 'pane', id: 'pane-bottom-right', sessionIds: [] },
-        ],
-      },
-    ],
-  }
+  return { type: 'pane', id: initialPaneId, sessionIds: [] }
 }
 
 function cloneInitialLayout(): TerminalLayoutNode {
@@ -589,8 +576,8 @@ function loadPersistedState(): PersistedWorkspaceState {
     return {
       workspaces: parsed.workspaces ?? [],
       activeWorkspaceId: parsed.activeWorkspaceId,
-      layoutByWorkspaceId: parsed.layoutByWorkspaceId ?? {},
-      activePaneIdByWorkspaceId: parsed.activePaneIdByWorkspaceId ?? {},
+      layoutByWorkspaceId: collapseWorkspaceLayouts(parsed.layoutByWorkspaceId ?? {}),
+      activePaneIdByWorkspaceId: Object.fromEntries(Object.keys(parsed.layoutByWorkspaceId ?? {}).map(workspaceId => [workspaceId, initialPaneId])),
       activeSessionIdByWorkspaceId: parsed.activeSessionIdByWorkspaceId ?? {},
       previewUrlByWorkspaceId: parsed.previewUrlByWorkspaceId ?? {},
       previewPanelWidthByWorkspaceId: parsed.previewPanelWidthByWorkspaceId ?? {},
@@ -599,6 +586,17 @@ function loadPersistedState(): PersistedWorkspaceState {
   } catch {
     return emptyPersistedState()
   }
+}
+
+function collapseWorkspaceLayouts(layoutByWorkspaceId: Record<string, TerminalLayoutNode>): Record<string, TerminalLayoutNode> {
+  return Object.fromEntries(
+    Object.entries(layoutByWorkspaceId).map(([workspaceId, layout]) => [workspaceId, {
+      type: 'pane',
+      id: initialPaneId,
+      sessionIds: unique(collectSessionIds(layout)),
+      activeSessionId: firstSessionInLayout(layout),
+    }]),
+  )
 }
 
 function emptyPersistedState(): PersistedWorkspaceState {

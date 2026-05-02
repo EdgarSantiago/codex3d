@@ -9,9 +9,11 @@ type SessionsPageProps = {
   workspaces: Workspace[]
   activeWorkspaceId?: string
   onSelectWorkspace: (workspaceId: string) => void
+  onCloseWorkspace: (workspaceId: string) => Promise<void>
   onAddWorkspace: () => Promise<void>
   onOpenWorkspaceInVSCode: (path: string) => Promise<void>
   sessions: AgentSession[]
+  workspaceCompletionCounts: Record<string, number>
   selectedSessionId?: string
   outputBySession: Record<string, string>
   terminalLayout: TerminalLayoutNode
@@ -50,9 +52,11 @@ export function SessionsPage({
   workspaces,
   activeWorkspaceId,
   onSelectWorkspace,
+  onCloseWorkspace,
   onAddWorkspace,
   onOpenWorkspaceInVSCode,
   sessions,
+  workspaceCompletionCounts,
   selectedSessionId,
   outputBySession,
   terminalLayout,
@@ -92,6 +96,7 @@ export function SessionsPage({
   const [renameValue, setRenameValue] = useState('')
   const [pendingCloseSession, setPendingCloseSession] = useState<AgentSession | undefined>()
   const [pendingClosePaneId, setPendingClosePaneId] = useState<string | undefined>()
+  const [pendingCloseWorkspace, setPendingCloseWorkspace] = useState<Workspace | undefined>()
 
   useEffect(() => {
     const firstSessionId = sessions[0]?.id
@@ -156,6 +161,17 @@ export function SessionsPage({
     setPendingClosePaneId(undefined)
   }, [onClosePane, pendingClosePaneId])
 
+  const closePendingWorkspace = useCallback(async () => {
+    if (!pendingCloseWorkspace) return
+    setBusy(true)
+    try {
+      await onCloseWorkspace(pendingCloseWorkspace.id)
+      setPendingCloseWorkspace(undefined)
+    } finally {
+      setBusy(false)
+    }
+  }, [onCloseWorkspace, pendingCloseWorkspace])
+
   const sessionsById = new Map(sessions.map(session => [session.id, session]))
   const activeWorkspace = workspaces.find(workspace => workspace.id === activeWorkspaceId)
   const workspacePath = formatWorkspacePath(activeWorkspace?.path)
@@ -165,17 +181,34 @@ export function SessionsPage({
       <div className="sessions-workspace-switcher">
         <div className="workspace-chip-row" aria-label="Workspace switcher">
           {workspaces.map(workspace => (
-            <button
-              type="button"
+            <span
               key={workspace.id}
               className={`workspace-chip ${workspace.id === activeWorkspaceId ? 'active' : ''}`}
-              onClick={() => onSelectWorkspace(workspace.id)}
               title={workspace.path}
             >
-              {workspace.name}
-            </button>
+              <button
+                type="button"
+                className="workspace-chip-select"
+                onClick={() => onSelectWorkspace(workspace.id)}
+              >
+                {workspace.name}
+                {workspaceCompletionCounts[workspace.id] ? <span className="workspace-chip-count">({workspaceCompletionCounts[workspace.id]})</span> : null}
+              </button>
+              <button
+                type="button"
+                className="workspace-chip-close"
+                aria-label={`Close workspace ${workspace.name}`}
+                title={`Close workspace ${workspace.name}`}
+                onClick={event => {
+                  event.stopPropagation()
+                  setPendingCloseWorkspace(workspace)
+                }}
+              >
+                ×
+              </button>
+            </span>
           ))}
-          <button type="button" className="workspace-chip add" onClick={() => void onAddWorkspace()}>+ Add</button>
+          <button type="button" className="workspace-chip add" aria-label="Add workspace" title="Add workspace" onClick={() => void onAddWorkspace()}>+</button>
         </div>
         <div className="workspace-header-row">
           <span title={activeWorkspace?.path}>
@@ -198,11 +231,12 @@ export function SessionsPage({
         </div>
       </div>
 
-      <div
-        className={`workspace-main-layout ${previewPanelHidden ? 'preview-hidden' : ''}`}
-        aria-busy={busy}
-        style={{ gridTemplateColumns: previewPanelHidden ? 'minmax(0, 1fr) 40px' : `minmax(0, 1fr) 8px ${previewPanelWidth ?? 420}px` }}
-      >
+      {activeWorkspace ? (
+        <div
+          className={`workspace-main-layout ${previewPanelHidden ? 'preview-hidden' : ''}`}
+          aria-busy={busy}
+          style={{ gridTemplateColumns: previewPanelHidden ? 'minmax(0, 1fr) 40px' : `minmax(0, 1fr) 8px ${previewPanelWidth ?? 420}px` }}
+        >
         <div className="workspace-agent-area">
           <div className="tabbed-sessions-page">
             <SplitNodeView
@@ -262,7 +296,29 @@ export function SessionsPage({
         />
           </>
         )}
-      </div>
+        </div>
+      ) : (
+        <div className="no-workspace-empty-state">
+          <div className="empty-terminal-glyph">+</div>
+          <h2>No workspace open</h2>
+          <p>Add a workspace to start Codex3D terminals, preview panels, and dev terminals.</p>
+          <button type="button" onClick={() => void onAddWorkspace()}>Add workspace</button>
+        </div>
+      )}
+
+      {pendingCloseWorkspace ? (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="close-workspace-title">
+            <h2 id="close-workspace-title">Close workspace?</h2>
+            <p>This closes {pendingCloseWorkspace.name} and its Codex3D terminals, dev terminals, and preview panel.</p>
+            <span>{pendingCloseWorkspace.path}</span>
+            <div className="confirm-modal-actions">
+              <button type="button" onClick={() => setPendingCloseWorkspace(undefined)}>Cancel</button>
+              <button type="button" className="danger-button" disabled={busy} onClick={() => void closePendingWorkspace()}>Close workspace</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {pendingCloseSession ? (
         <div className="modal-backdrop" role="presentation">
@@ -456,6 +512,10 @@ type SplitNodeViewProps = {
   onResizeTerminal: (sessionId: string, cols: number, rows: number) => void
 }
 
+function unique<T>(items: T[]): T[] {
+  return [...new Set(items)]
+}
+
 function SplitNodeView(props: SplitNodeViewProps) {
   const { node } = props
   if (node.type === 'split') {
@@ -485,15 +545,21 @@ function SplitNodeView(props: SplitNodeViewProps) {
     )
   }
 
-  const paneSessions = node.sessionIds.map(id => props.sessionsById.get(id)).filter((session): session is AgentSession => Boolean(session))
+  const paneSessions = unique(node.sessionIds).map(id => props.sessionsById.get(id)).filter((session): session is AgentSession => Boolean(session))
   const selectedSession = paneSessions.find(session => session.id === node.activeSessionId) ?? paneSessions[0]
   const visibleOutput = selectedSession ? props.outputBySession[selectedSession.id] ?? '' : ''
+  const selectVisibleSession = () => {
+    props.onSelectPane(node.id)
+    if (!selectedSession) return
+    props.onSelectPaneSession(node.id, selectedSession.id)
+    props.onSelectSession(selectedSession.id)
+  }
 
   return (
     <section
       className={`terminal-pane-frame ${node.id === props.activePaneId ? 'active' : ''}`}
-      onFocus={() => props.onSelectPane(node.id)}
-      onMouseDown={() => props.onSelectPane(node.id)}
+      onFocus={selectVisibleSession}
+      onMouseDown={selectVisibleSession}
     >
       <TerminalTabBar
         paneId={node.id}

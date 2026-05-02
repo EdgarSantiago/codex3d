@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && electron-vite build",
     "dist": "bun run build && electron-builder --win portable",
     "preview": "electron-vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/fix-node-pty-permissions.mjs"
   },
   "build": {
     "appId": "com.codex3d.orchestrator",

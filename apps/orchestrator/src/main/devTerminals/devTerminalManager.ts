@@ -1,12 +1,21 @@
 import { randomUUID } from 'crypto'
+import { app } from 'electron'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { join } from 'path'
 import type { IPty } from 'node-pty'
 import { spawn } from 'node-pty'
 import type { CreateDevTerminalInput, DevTerminal } from '../../shared/types'
+import { getInteractiveShellArgs, getSafeCwd, getTerminalEnv, getUserShell, resolveExecutable } from '../platform/terminal'
 
 export type DevTerminalOutputHandler = (event: { terminalId: string; chunk: string }) => void
 export type DevTerminalStatusHandler = (terminal: DevTerminal) => void
 
 const MAX_OUTPUT_CHARS = 1024 * 1024
+
+type PersistedDevTerminals = {
+  terminals: DevTerminal[]
+  outputByTerminal: Record<string, string>
+}
 
 class DevTerminalManager {
   private processes = new Map<string, IPty>()
@@ -15,6 +24,10 @@ class DevTerminalManager {
   private stoppingTerminals = new Set<string>()
   private onOutput?: DevTerminalOutputHandler
   private onStatus?: DevTerminalStatusHandler
+
+  constructor() {
+    this.loadPersistedState()
+  }
 
   setHandlers(handlers: { onOutput: DevTerminalOutputHandler; onStatus: DevTerminalStatusHandler }): void {
     this.onOutput = handlers.onOutput
@@ -45,6 +58,7 @@ class DevTerminalManager {
     }
 
     this.terminals.set(id, terminal)
+    this.persistState()
     this.onStatus?.(terminal)
     this.startPty(terminal)
     return this.terminals.get(id)!
@@ -67,6 +81,7 @@ class DevTerminalManager {
     if (!current) throw new Error(`Unknown dev terminal: ${terminalId}`)
     const next = { ...current, name, updatedAt: Date.now() }
     this.terminals.set(terminalId, next)
+    this.persistState()
     this.onStatus?.(next)
     return next
   }
@@ -84,16 +99,18 @@ class DevTerminalManager {
     this.stop(terminalId)
     this.terminals.delete(terminalId)
     delete this.outputByTerminal[terminalId]
+    this.persistState()
   }
 
   private startPty(terminal: DevTerminal): void {
     try {
-      const pty = spawn(terminal.shell, [], {
-        name: process.platform === 'win32' ? 'xterm-256color' : 'xterm-color',
+      const shell = resolveExecutable(terminal.shell)
+      const pty = spawn(shell, getInteractiveShellArgs(shell), {
+        name: 'xterm-256color',
         cols: 100,
         rows: 20,
-        cwd: terminal.cwd,
-        env: getStringEnv(),
+        cwd: getSafeCwd(terminal.cwd),
+        env: getTerminalEnv(),
         useConpty: process.platform === 'win32',
       })
       this.processes.set(terminal.id, pty)
@@ -117,6 +134,7 @@ class DevTerminalManager {
   private appendOutput(terminalId: string, chunk: string): void {
     const nextOutput = `${this.outputByTerminal[terminalId] ?? ''}${chunk}`
     this.outputByTerminal[terminalId] = nextOutput.slice(-MAX_OUTPUT_CHARS)
+    this.persistState()
     this.onOutput?.({ terminalId, chunk })
   }
 
@@ -125,19 +143,53 @@ class DevTerminalManager {
     if (!current) return
     const next = { ...current, status, updatedAt: Date.now() }
     this.terminals.set(terminalId, next)
+    this.persistState()
     this.onStatus?.(next)
+  }
+
+  private loadPersistedState(): void {
+    const path = getPersistencePath()
+    if (!existsSync(path)) return
+    try {
+      const parsed = JSON.parse(readFileSync(path, 'utf8')) as PersistedDevTerminals
+      const now = Date.now()
+      const terminalsToRestart: DevTerminal[] = []
+      for (const terminal of parsed.terminals ?? []) {
+        const shouldRestart = terminal.status !== 'stopped' && terminal.status !== 'errored'
+        const restoredTerminal: DevTerminal = {
+          ...terminal,
+          status: shouldRestart ? 'starting' : terminal.status,
+          updatedAt: now,
+        }
+        this.terminals.set(terminal.id, restoredTerminal)
+        if (shouldRestart) terminalsToRestart.push(restoredTerminal)
+      }
+      this.outputByTerminal = parsed.outputByTerminal ?? {}
+      this.persistState()
+      for (const terminal of terminalsToRestart) {
+        this.startPty(terminal)
+      }
+    } catch {
+      this.terminals.clear()
+      this.outputByTerminal = {}
+    }
+  }
+
+  private persistState(): void {
+    const data: PersistedDevTerminals = {
+      terminals: this.list(),
+      outputByTerminal: this.outputByTerminal,
+    }
+    writeFileSync(getPersistencePath(), `${JSON.stringify(data, null, 2)}\n`, 'utf8')
   }
 }
 
 function getShell(): string {
-  if (process.platform === 'win32') return process.env.ComSpec || 'cmd.exe'
-  return process.env.SHELL || '/bin/sh'
+  return getUserShell()
 }
 
-function getStringEnv(): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
-  )
+function getPersistencePath(): string {
+  return join(app.getPath('userData'), 'orchestrator-dev-terminals.json')
 }
 
 export const devTerminalManager = new DevTerminalManager()

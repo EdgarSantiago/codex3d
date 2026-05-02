@@ -21,14 +21,38 @@ import {
 } from '../../shared/schemas'
 
 export function registerIpc(mainWindow: BrowserWindow): void {
+  let rendererReady = false
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    rendererReady = true
+  })
+  mainWindow.webContents.on('did-fail-load', () => {
+    rendererReady = false
+  })
+  mainWindow.webContents.on('render-process-gone', () => {
+    rendererReady = false
+  })
+  mainWindow.on('closed', () => {
+    rendererReady = false
+  })
+
+  const sendToRenderer = (channel: string, payload: unknown) => {
+    if (!rendererReady || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed() || mainWindow.webContents.isLoading()) return
+    try {
+      mainWindow.webContents.send(channel, payload)
+    } catch {
+      rendererReady = false
+    }
+  }
+
   sessionManager.setHandlers({
-    onOutput: event => mainWindow.webContents.send('agent:output', event),
-    onStatus: session => mainWindow.webContents.send('agent:status', session),
+    onOutput: event => sendToRenderer('agent:output', event),
+    onStatus: session => sendToRenderer('agent:status', session),
   })
 
   devTerminalManager.setHandlers({
-    onOutput: event => mainWindow.webContents.send('devTerminal:output', event),
-    onStatus: terminal => mainWindow.webContents.send('devTerminal:status', terminal),
+    onOutput: event => sendToRenderer('devTerminal:output', event),
+    onStatus: terminal => sendToRenderer('devTerminal:status', terminal),
   })
 
   ipcMain.handle('providers:list', () => {
@@ -100,6 +124,15 @@ export function registerIpc(mainWindow: BrowserWindow): void {
   ipcMain.handle('sessions:list', () => sessionManager.list())
 
   ipcMain.handle('sessions:outputs', () => sessionManager.outputs())
+
+  ipcMain.handle('sessions:completionCounts', () => sessionManager.completionCounts())
+
+  ipcMain.handle('sessions:clearCompletionCounts', (_event, sessionIds: unknown) => {
+    if (!Array.isArray(sessionIds) || !sessionIds.every(sessionId => typeof sessionId === 'string')) {
+      throw new Error('Invalid sessionIds')
+    }
+    return sessionManager.clearCompletionCounts(sessionIds)
+  })
 
   ipcMain.handle('sessions:launch', (_event, input: unknown) => {
     return sessionManager.launch(launchAgentSchema.parse(input))

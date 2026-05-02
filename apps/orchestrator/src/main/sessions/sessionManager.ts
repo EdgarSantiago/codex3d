@@ -1,12 +1,13 @@
 import { randomUUID } from 'crypto'
 import { app } from 'electron'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import type { IPty } from 'node-pty'
 import { spawn } from 'node-pty'
-import type { AgentSession, LaunchAgentInput } from '../../shared/types'
+import type { AgentSession, LaunchAgentInput, SessionCompletionCounts } from '../../shared/types'
 import { getAgentAdapter } from '../agents/registry'
+import { buildPtyLaunch, describeCwd, getSafeCwd, getTerminalEnv } from '../platform/terminal'
 
 export type SessionOutputHandler = (event: { sessionId: string; chunk: string }) => void
 export type SessionStatusHandler = (session: AgentSession) => void
@@ -14,6 +15,7 @@ export type SessionStatusHandler = (session: AgentSession) => void
 type PersistedSessions = {
   sessions: AgentSession[]
   outputBySession: Record<string, string>
+  completedPromptCounts?: SessionCompletionCounts
 }
 
 const MAX_PERSISTED_OUTPUT_CHARS = 1024 * 1024
@@ -24,6 +26,10 @@ class SessionManager {
   private stoppingSessions = new Set<string>()
   private sessions = new Map<string, AgentSession>()
   private outputBySession: Record<string, string> = {}
+  private completedPromptCounts: SessionCompletionCounts = {}
+  private pendingPromptCounts: SessionCompletionCounts = {}
+  private pendingPromptAssistantBaselineBySession: SessionCompletionCounts = {}
+  private inputBySession: Record<string, string> = {}
   private onOutput?: SessionOutputHandler
   private onStatus?: SessionStatusHandler
 
@@ -42,6 +48,18 @@ class SessionManager {
 
   outputs(): Record<string, string> {
     return { ...this.outputBySession }
+  }
+
+  completionCounts(): SessionCompletionCounts {
+    return { ...this.completedPromptCounts }
+  }
+
+  clearCompletionCounts(sessionIds: string[]): SessionCompletionCounts {
+    for (const sessionId of sessionIds) {
+      this.completedPromptCounts[sessionId] = 0
+    }
+    this.persistState()
+    return this.completionCounts()
   }
 
   launch(input: LaunchAgentInput): AgentSession {
@@ -79,14 +97,15 @@ class SessionManager {
       throw new Error(`Unknown session: ${sessionId}`)
     }
 
+    const nextGeneration = (this.sessionGenerations.get(sessionId) ?? 0) + 1
+    this.sessionGenerations.set(sessionId, nextGeneration)
+
     const existing = this.processes.get(sessionId)
     if (existing) {
       this.processes.delete(sessionId)
       existing.kill()
     }
 
-    const nextGeneration = (this.sessionGenerations.get(sessionId) ?? 0) + 1
-    this.sessionGenerations.set(sessionId, nextGeneration)
     this.stoppingSessions.delete(sessionId)
     const isResume = Boolean(session.resumeArgs)
     this.appendOutput(sessionId, `\r\n[orchestrator] ${isResume ? 'resuming' : 'restarting'} session\r\n`)
@@ -111,6 +130,10 @@ class SessionManager {
     this.stop(sessionId)
     this.sessions.delete(sessionId)
     delete this.outputBySession[sessionId]
+    delete this.completedPromptCounts[sessionId]
+    delete this.pendingPromptCounts[sessionId]
+    delete this.inputBySession[sessionId]
+    delete this.pendingPromptAssistantBaselineBySession[sessionId]
     this.persistState()
   }
 
@@ -120,6 +143,8 @@ class SessionManager {
       this.appendOutput(sessionId, '\r\n[orchestrator] session is not running\r\n')
       return
     }
+    const session = this.sessions.get(sessionId)
+    if (session?.provider === 'codex3d') this.trackSubmittedPrompts(sessionId, input)
     pty.write(input)
   }
 
@@ -141,25 +166,16 @@ class SessionManager {
   private startPty(session: AgentSession, useResumeArgs = false): void {
     const generation = this.sessionGenerations.get(session.id) ?? 0
     const args = useResumeArgs && session.resumeArgs ? session.resumeArgs : session.args
-    const launch = {
-      command: session.command,
-      args,
-      cwd: session.cwd,
-      env: process.env,
-    }
-    const terminalCommand = process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : launch.command
-    const terminalArgs = process.platform === 'win32' ? ['/d', '/k'] : launch.args
-    const commandLine = [launch.command, ...launch.args].map(quoteWindowsArg).join(' ')
-    const env = Object.fromEntries(
-      Object.entries(launch.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
-    )
+    const ptyLaunch = buildPtyLaunch(session.command, args)
+    const env = getTerminalEnv()
+    const cwd = getSafeCwd(session.cwd)
 
     try {
-      const pty = spawn(terminalCommand, terminalArgs, {
-        name: process.platform === 'win32' ? 'xterm-256color' : 'xterm-color',
+      const pty = spawn(ptyLaunch.command, ptyLaunch.args, {
+        name: 'xterm-256color',
         cols: 100,
         rows: 30,
-        cwd: launch.cwd,
+        cwd,
         env,
         useConpty: process.platform === 'win32',
       })
@@ -167,12 +183,12 @@ class SessionManager {
       this.updateStatus(session.id, 'running')
       this.appendOutput(
         session.id,
-        `\r\n[orchestrator] launched ${terminalCommand} ${terminalArgs.join(' ')}\r\n[orchestrator] cwd ${launch.cwd}\r\n`,
+        `\r\n[orchestrator] launched ${ptyLaunch.command} ${ptyLaunch.args.join(' ')}\r\n[orchestrator] cwd ${cwd}\r\n`,
       )
 
-      if (process.platform === 'win32') {
-        this.appendOutput(session.id, `\r\n[orchestrator] running ${commandLine}\r\n`)
-        pty.write(`${commandLine}\r`)
+      if (ptyLaunch.input) {
+        this.appendOutput(session.id, `\r\n[orchestrator] running ${ptyLaunch.display}\r\n`)
+        pty.write(ptyLaunch.input)
       }
 
       pty.onData(chunk => this.appendOutput(session.id, chunk))
@@ -187,12 +203,48 @@ class SessionManager {
         this.updateStatus(session.id, wasStoppedByUser || event.exitCode === 0 ? 'stopped' : 'errored')
       })
     } catch (error) {
-      this.appendOutput(session.id, `\r\n[orchestrator] ${error instanceof Error ? error.message : 'Failed to launch session'}\r\n`)
+      this.appendOutput(session.id, `\r\n[orchestrator] ${error instanceof Error ? error.message : 'Failed to launch session'}\r\n[orchestrator] command ${ptyLaunch.command} ${ptyLaunch.args.join(' ')}\r\n[orchestrator] cwd ${session.cwd} (${describeCwd(session.cwd)})\r\n[orchestrator] fallback cwd ${cwd}\r\n`)
       this.updateStatus(session.id, 'errored')
     }
   }
 
+  private trackSubmittedPrompts(sessionId: string, input: string): void {
+    const previous = this.inputBySession[sessionId] ?? ''
+    const next = `${previous}${input}`
+    const submittedPrompts = next.split(/\r\n|\r|\n/)
+    const pendingInput = submittedPrompts.pop() ?? ''
+    const count = submittedPrompts.filter(prompt => prompt.trim()).length
+    if (count > 0) {
+      const session = this.sessions.get(sessionId)
+      this.pendingPromptCounts[sessionId] = (this.pendingPromptCounts[sessionId] ?? 0) + count
+      this.pendingPromptAssistantBaselineBySession[sessionId] = session ? countAssistantMessages(session) : 0
+    }
+    this.inputBySession[sessionId] = pendingInput
+  }
+
+  private trackCompletedPrompts(sessionId: string, chunk: string): void {
+    const pendingCount = this.pendingPromptCounts[sessionId] ?? 0
+    if (pendingCount <= 0 || !isCodex3DReadyPrompt(chunk)) return
+    const session = this.sessions.get(sessionId)
+    if (!session) return
+    const assistantDelta = countAssistantMessages(session) - (this.pendingPromptAssistantBaselineBySession[sessionId] ?? 0)
+    const completedCount = Math.min(pendingCount, Math.max(0, assistantDelta))
+    if (completedCount <= 0) return
+    this.completedPromptCounts[sessionId] = (this.completedPromptCounts[sessionId] ?? 0) + completedCount
+    const remainingPendingCount = pendingCount - completedCount
+    if (remainingPendingCount > 0) {
+      this.pendingPromptCounts[sessionId] = remainingPendingCount
+      this.pendingPromptAssistantBaselineBySession[sessionId] = countAssistantMessages(session)
+    } else {
+      delete this.pendingPromptCounts[sessionId]
+      delete this.pendingPromptAssistantBaselineBySession[sessionId]
+    }
+    this.persistState()
+  }
+
   private appendOutput(sessionId: string, chunk: string): void {
+    const session = this.sessions.get(sessionId)
+    if (session?.provider === 'codex3d') this.trackCompletedPrompts(sessionId, chunk)
     const nextOutput = `${this.outputBySession[sessionId] ?? ''}${chunk}`
     this.outputBySession[sessionId] = nextOutput.slice(-MAX_PERSISTED_OUTPUT_CHARS)
     this.persistState()
@@ -224,10 +276,12 @@ class SessionManager {
         })
       }
       this.outputBySession = parsed.outputBySession ?? {}
+      this.completedPromptCounts = parsed.completedPromptCounts ?? Object.fromEntries(this.list().map(session => [session.id, countCompletedPrompts(session)]))
       this.persistState()
     } catch {
       this.sessions.clear()
       this.outputBySession = {}
+      this.completedPromptCounts = {}
     }
   }
 
@@ -235,6 +289,7 @@ class SessionManager {
     const data: PersistedSessions = {
       sessions: this.list(),
       outputBySession: this.outputBySession,
+      completedPromptCounts: this.completedPromptCounts,
     }
     writeFileSync(getPersistencePath(), `${JSON.stringify(data, null, 2)}\n`, 'utf8')
   }
@@ -295,13 +350,86 @@ function simpleHash(input: string): string {
   return (hash >>> 0).toString(36)
 }
 
-function getPersistencePath(): string {
-  return join(app.getPath('userData'), 'orchestrator-sessions.json')
+function countAssistantMessages(session: AgentSession): number {
+  if (session.provider !== 'codex3d') return 0
+  const transcriptPath = getCodex3DTranscriptPath(session.cwd, session.id)
+  if (existsSync(transcriptPath)) return countAssistantMessagesInFile(transcriptPath)
+  return countAssistantMessagesInLegacyDirectory(session.id)
 }
 
-function quoteWindowsArg(arg: string): string {
-  if (!/[\s&()^[\]{}=;!'+,`~]/.test(arg)) return arg
-  return `"${arg.replace(/"/g, '\\"')}"`
+function countAssistantMessagesInLegacyDirectory(sessionId: string): number {
+  const projectsDir = getCodex3DProjectsDir()
+  if (!existsSync(projectsDir)) return 0
+  try {
+    for (const projectName of readdirSync(projectsDir)) {
+      const transcriptPath = join(projectsDir, projectName, `${sessionId}.jsonl`)
+      if (existsSync(transcriptPath)) return countAssistantMessagesInFile(transcriptPath)
+    }
+  } catch {
+    return 0
+  }
+  return 0
+}
+
+function countAssistantMessagesInFile(path: string): number {
+  try {
+    return readFileSync(path, 'utf8')
+      .split('\n')
+      .filter(line => line.includes('"type":"assistant"') || line.includes('"type": "assistant"'))
+      .length
+  } catch {
+    return 0
+  }
+}
+
+function isCodex3DReadyPrompt(chunk: string): boolean {
+  return normalizeTerminalText(stripAnsi(chunk))
+    .split(/\r\n|\r|\n/)
+    .some(line => /^\s*❯\s*$/.test(line))
+}
+
+function normalizeTerminalText(input: string): string {
+  return input.replace(/[^\t\n\r\x20-\x7e❯]/g, '')
+}
+
+function stripAnsi(input: string): string {
+  return input.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
+}
+
+function countCompletedPrompts(session: AgentSession): number {
+  if (session.provider !== 'codex3d') return 0
+  const transcriptPath = getCodex3DTranscriptPath(session.cwd, session.id)
+  if (existsSync(transcriptPath)) return countCompletedPromptsInFile(transcriptPath)
+  return countCompletedPromptsInLegacyDirectory(session.id)
+}
+
+function countCompletedPromptsInLegacyDirectory(sessionId: string): number {
+  const projectsDir = getCodex3DProjectsDir()
+  if (!existsSync(projectsDir)) return 0
+  try {
+    for (const projectName of readdirSync(projectsDir)) {
+      const transcriptPath = join(projectsDir, projectName, `${sessionId}.jsonl`)
+      if (existsSync(transcriptPath)) return countCompletedPromptsInFile(transcriptPath)
+    }
+  } catch {
+    return 0
+  }
+  return 0
+}
+
+function countCompletedPromptsInFile(path: string): number {
+  try {
+    return readFileSync(path, 'utf8')
+      .split('\n')
+      .filter(line => line.includes('"type":"last-prompt"'))
+      .length
+  } catch {
+    return 0
+  }
+}
+
+function getPersistencePath(): string {
+  return join(app.getPath('userData'), 'orchestrator-sessions.json')
 }
 
 export const sessionManager = new SessionManager()
