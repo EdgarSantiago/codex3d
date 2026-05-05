@@ -1,19 +1,32 @@
 {
   "name": "@gitlawb/openclaude",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "OpenClaude opens coding-agent workflows to any LLM — OpenAI, Gemini, DeepSeek, Ollama, and 200+ models",
   "type": "module",
   "bin": {
     "openclaude": "./bin/openclaude",
     "codex3d": "./bin/codex3d"
   },
+  "exports": {
+    "./package.json": "./package.json",
+    "./dist/cli.mjs": "./dist/cli.mjs",
+    "./sdk": {
+      "types": "./src/entrypoints/sdk.d.ts",
+      "import": "./dist/sdk.mjs"
+    }
+  },
   "files": [
     "bin/",
     "dist/cli.mjs",
+    "dist/sdk.mjs",
+    "src/entrypoints/sdk.d.ts",
+    "src/entrypoints/sdk/coreTypes.generated.ts",
     "README.md"
   ],
   "scripts": {
     "build": "bun run scripts/build.ts",
+    "integrations:generate": "bun run scripts/generate-integrations-artifacts.ts",
+    "integrations:check": "bun run scripts/generate-integrations-artifacts.ts --check",
     "dev": "bun run build && node dist/cli.mjs",
     "dev:profile": "bun run scripts/provider-launch.ts",
     "dev:profile:fast": "bun run scripts/provider-launch.ts auto --fast --bare",

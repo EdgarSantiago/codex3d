@@ -130,6 +130,7 @@ Guias avançados e de build local:
 | Provedor | Caminho de configuração | Observações |
 | --- | --- | --- |
 | Compatível com OpenAI | `/provider` ou variáveis de ambiente | Funciona com OpenAI, OpenRouter, DeepSeek, Groq, Mistral, LM Studio e outros servidores compatíveis com `/v1` |
+| Hicap | `/provider` ou variáveis de ambiente compatíveis com OpenAI | Usa autenticação `api-key`, descobre modelos por `/models` não autenticado e suporta modo Responses para modelos `gpt-` |
 | Gemini | `/provider` ou variáveis de ambiente | Suporta chave de API, token de acesso ou fluxo local com ADC |
 | GitHub Models | `/onboard-github` | Onboarding interativo com credenciais salvas |
 | Codex OAuth | `/provider` | Abre o login do ChatGPT no navegador e armazena credenciais do Codex com segurança |
