@@ -26,7 +26,7 @@ export function TerminalView({ session, output, onInput, onResize, onNewTerminal
     )
   }
 
-  const canResumeCodex3D = session.provider === 'codex3d' && Boolean(session.resumeArgs)
+  const canResumeCodex3D = session.provider === 'codex3d'
 
   if (session.status === 'stopped' && !output) {
     return (
@@ -42,10 +42,14 @@ export function TerminalView({ session, output, onInput, onResize, onNewTerminal
   }
 
   return (
-    <div className="tabbed-terminal-view">
+    <div className={`tabbed-terminal-view ${session.status === 'stopped' && canResumeCodex3D ? 'resume-visible' : ''}`}>
       {session.status === 'stopped' && canResumeCodex3D ? (
-        <div className="terminal-resume-banner">
-          <span>Stopped chat: codex3d --resume {session.id}</span>
+        <div className="terminal-resume-banner" role="status" aria-live="polite">
+          <div className="terminal-resume-icon" aria-hidden="true">↻</div>
+          <div className="terminal-resume-copy">
+            <strong>Session paused</strong>
+            <span>Resume the previous Codex3D conversation.</span>
+          </div>
           <button type="button" onClick={onRestart}>Resume</button>
         </div>
       ) : null}

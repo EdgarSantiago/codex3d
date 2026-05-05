@@ -220,6 +220,14 @@ export function SessionsPage({
           </span>
           <button
             type="button"
+            className="workspace-preview-show-button"
+            disabled={!activeWorkspace}
+            onClick={() => onSetPreviewPanelHidden(!previewPanelHidden)}
+          >
+            {previewPanelHidden ? 'Show Preview' : 'Hide Preview'}
+          </button>
+          <button
+            type="button"
             className="workspace-open-code-button"
             disabled={!activeWorkspace}
             onClick={() => {
@@ -235,7 +243,7 @@ export function SessionsPage({
         <div
           className={`workspace-main-layout ${previewPanelHidden ? 'preview-hidden' : ''}`}
           aria-busy={busy}
-          style={{ gridTemplateColumns: previewPanelHidden ? 'minmax(0, 1fr) 40px' : `minmax(0, 1fr) 8px ${previewPanelWidth ?? 420}px` }}
+          style={{ gridTemplateColumns: previewPanelHidden ? 'minmax(0, 1fr)' : `minmax(0, 1fr) 8px ${previewPanelWidth ?? 420}px` }}
         >
         <div className="workspace-agent-area">
           <div className="tabbed-sessions-page">
@@ -263,15 +271,7 @@ export function SessionsPage({
             />
           </div>
         </div>
-        {previewPanelHidden ? (
-          <button
-            type="button"
-            className="workspace-preview-show-button"
-            onClick={() => onSetPreviewPanelHidden(false)}
-          >
-            Preview
-          </button>
-        ) : (
+        {previewPanelHidden ? null : (
           <>
             <div
               className="workspace-right-resize-handle"

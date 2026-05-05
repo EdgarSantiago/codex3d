@@ -24,48 +24,58 @@ function parseFrontmatter(content: string): { name?: string; description?: strin
 }
 
 async function readSkill(skillPath: string): Promise<LocalSkill | undefined> {
-  const skillStat = await stat(skillPath)
-  if (!skillStat.isDirectory()) return undefined
-
-  const id = basename(skillPath)
-  const readmePath = join(skillPath, 'README.md')
-  let name = id
-  let description = 'Local Claude skill'
-  let hasReadme = false
-
   try {
-    const readmeStat = await stat(readmePath)
-    if (readmeStat.isFile() && readmeStat.size <= MAX_SKILL_README_BYTES) {
-      hasReadme = true
-      const frontmatter = parseFrontmatter(await readFile(readmePath, 'utf-8'))
-      name = frontmatter.name || id
-      description = frontmatter.description || description
+    const skillStat = await stat(skillPath)
+    if (!skillStat.isDirectory()) return undefined
+
+    const id = basename(skillPath)
+    const readmePath = join(skillPath, 'README.md')
+    let name = id
+    let description = 'Local Claude skill'
+    let hasReadme = false
+
+    try {
+      const readmeStat = await stat(readmePath)
+      if (readmeStat.isFile() && readmeStat.size <= MAX_SKILL_README_BYTES) {
+        hasReadme = true
+        const frontmatter = parseFrontmatter(await readFile(readmePath, 'utf-8'))
+        name = frontmatter.name || id
+        description = frontmatter.description || description
+      }
+    } catch {
+      // Skills can exist without a README; show the folder name.
+    }
+
+    return {
+      id,
+      name,
+      description,
+      path: skillPath,
+      source: 'claude-user',
+      hasReadme,
     }
   } catch {
-    // Skills can exist without a README; show the folder name.
-  }
-
-  return {
-    id,
-    name,
-    description,
-    path: skillPath,
-    source: 'claude-user',
-    hasReadme,
+    return undefined
   }
 }
 
 export async function listLocalClaudeSkills(): Promise<LocalSkill[]> {
-  const skillsRoot = join(homedir(), '.claude', 'skills')
+  return listSkillsFromFolder(join(homedir(), '.claude', 'skills'))
+}
+
+export async function listSkillsFromFolder(skillsRoot: string): Promise<LocalSkill[]> {
+  const rootSkill = await readSkill(skillsRoot)
+  const selectedRootSkill = rootSkill?.hasReadme ? rootSkill : undefined
   let entries: string[]
   try {
     entries = await readdir(skillsRoot)
   } catch {
-    return []
+    return selectedRootSkill ? [selectedRootSkill] : []
   }
 
   const skills = await Promise.all(entries.map(entry => readSkill(join(skillsRoot, entry))))
-  return skills
+  const allSkills = selectedRootSkill ? [selectedRootSkill, ...skills] : skills
+  return allSkills
     .filter((skill): skill is LocalSkill => skill !== undefined)
     .sort((a, b) => a.name.localeCompare(b.name))
 }

@@ -2,8 +2,8 @@ import { ipcMain, BrowserWindow, dialog, shell } from 'electron'
 import { spawn } from 'child_process'
 import { pathToFileURL } from 'url'
 import { listAgentAdapters } from '../agents/registry'
-import { listLocalClaudeAgents } from '../agents/localAgents'
-import { listLocalClaudeSkills } from '../skills/localSkills'
+import { listLocalClaudeAgents, listAgentsFromFolder } from '../agents/localAgents'
+import { listLocalClaudeSkills, listSkillsFromFolder } from '../skills/localSkills'
 import { sessionManager } from '../sessions/sessionManager'
 import { devTerminalManager } from '../devTerminals/devTerminalManager'
 import {
@@ -69,7 +69,33 @@ export function registerIpc(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('agents:listLocalClaude', () => listLocalClaudeAgents())
 
+  ipcMain.handle('agents:listFromFolder', (_event, folderPath: unknown) => {
+    if (typeof folderPath !== 'string') throw new Error('Invalid folder path')
+    return listAgentsFromFolder(folderPath)
+  })
+
+  ipcMain.handle('agents:chooseFolder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select agents folder',
+    })
+    return result.canceled ? undefined : result.filePaths[0]
+  })
+
   ipcMain.handle('skills:listLocalClaude', () => listLocalClaudeSkills())
+
+  ipcMain.handle('skills:listFromFolder', (_event, folderPath: unknown) => {
+    if (typeof folderPath !== 'string') throw new Error('Invalid folder path')
+    return listSkillsFromFolder(folderPath)
+  })
+
+  ipcMain.handle('skills:chooseFolder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select skills folder',
+    })
+    return result.canceled ? undefined : result.filePaths[0]
+  })
 
   ipcMain.handle('workspaces:chooseFolder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {

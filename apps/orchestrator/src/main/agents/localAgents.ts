@@ -32,27 +32,34 @@ function prettifyAgentName(fileName: string): string {
 }
 
 async function readAgent(agentPath: string): Promise<LocalAgent | undefined> {
-  const agentStat = await stat(agentPath)
-  if (!agentStat.isFile() || agentStat.size > MAX_AGENT_BYTES || extname(agentPath) !== '.md') {
+  try {
+    const agentStat = await stat(agentPath)
+    if (!agentStat.isFile() || agentStat.size > MAX_AGENT_BYTES || extname(agentPath) !== '.md') {
+      return undefined
+    }
+
+    const fileName = basename(agentPath)
+    const id = basename(fileName, '.md')
+    const content = await readFile(agentPath, 'utf-8')
+    const frontmatter = parseFrontmatter(content)
+
+    return {
+      id,
+      name: frontmatter.name || prettifyAgentName(fileName),
+      description: frontmatter.description || 'Local Claude agent',
+      path: agentPath,
+      source: 'claude-user',
+    }
+  } catch {
     return undefined
-  }
-
-  const fileName = basename(agentPath)
-  const id = basename(fileName, '.md')
-  const content = await readFile(agentPath, 'utf-8')
-  const frontmatter = parseFrontmatter(content)
-
-  return {
-    id,
-    name: frontmatter.name || prettifyAgentName(fileName),
-    description: frontmatter.description || 'Local Claude agent',
-    path: agentPath,
-    source: 'claude-user',
   }
 }
 
 export async function listLocalClaudeAgents(): Promise<LocalAgent[]> {
-  const agentsRoot = join(homedir(), '.claude', 'agents')
+  return listAgentsFromFolder(join(homedir(), '.claude', 'agents'))
+}
+
+export async function listAgentsFromFolder(agentsRoot: string): Promise<LocalAgent[]> {
   let entries: string[]
   try {
     entries = await readdir(agentsRoot)

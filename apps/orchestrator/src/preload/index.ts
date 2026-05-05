@@ -24,9 +24,13 @@ const api = {
   },
   agents: {
     listLocalClaude: () => ipcRenderer.invoke('agents:listLocalClaude') as Promise<LocalAgent[]>,
+    listFromFolder: (folderPath: string) => ipcRenderer.invoke('agents:listFromFolder', folderPath) as Promise<LocalAgent[]>,
+    chooseFolder: () => ipcRenderer.invoke('agents:chooseFolder') as Promise<string | undefined>,
   },
   skills: {
     listLocalClaude: () => ipcRenderer.invoke('skills:listLocalClaude') as Promise<LocalSkill[]>,
+    listFromFolder: (folderPath: string) => ipcRenderer.invoke('skills:listFromFolder', folderPath) as Promise<LocalSkill[]>,
+    chooseFolder: () => ipcRenderer.invoke('skills:chooseFolder') as Promise<string | undefined>,
   },
   workspaces: {
     chooseFolder: () => ipcRenderer.invoke('workspaces:chooseFolder') as Promise<string | undefined>,

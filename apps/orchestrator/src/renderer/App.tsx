@@ -5,13 +5,13 @@ import { useAppStore } from './stores/appStore'
 
 const navItems = [
   { label: 'Sessions', icon: '⌘' },
-  { label: 'Skills & Agents', icon: '✦' },
+  { label: 'Agents', icon: '✦' },
+  { label: 'Skills', icon: '◈' },
   { label: 'Settings', icon: '⚙' },
 ] as const
 type Page = typeof navItems[number]['label']
 
 const roles: AgentRole[] = ['manual', 'planner', 'implementer', 'verifier', 'reviewer', 'tester', 'researcher']
-const quickSkills = ['Codex3D Implementer', 'Codex3D Verifier', 'Codex3D Planner', '/buddy status', '/commit', '/simplify']
 
 export function App() {
   const {
@@ -59,6 +59,8 @@ export function App() {
   const [devOutputByTerminal, setDevOutputByTerminal] = useState<Record<string, string>>({})
   const [activeDevTerminalIdByWorkspaceId, setActiveDevTerminalIdByWorkspaceId] = useState<Record<string, string | undefined>>({})
   const [sessionCompletionCounts, setSessionCompletionCounts] = useState<SessionCompletionCounts>({})
+  const [agentFolders, setAgentFolders] = useState<string[]>(['~/.claude/agents'])
+  const [skillFolders, setSkillFolders] = useState<string[]>(['~/.claude/skills'])
 
   useEffect(() => {
     void Promise.all([
@@ -146,6 +148,22 @@ export function App() {
   async function refreshSessionCompletionCounts() {
     const completionCounts = await window.orchestrator.sessions.completionCounts()
     setSessionCompletionCounts(completionCounts)
+  }
+
+  async function addAgentsFolder() {
+    const folder = await window.orchestrator.agents.chooseFolder()
+    if (!folder) return
+    const agents = await window.orchestrator.agents.listFromFolder(folder)
+    setLocalAgents(mergeByPath(localAgents, agents))
+    setAgentFolders(current => current.includes(folder) ? current : [...current, folder])
+  }
+
+  async function addSkillsFolder() {
+    const folder = await window.orchestrator.skills.chooseFolder()
+    if (!folder) return
+    const skills = await window.orchestrator.skills.listFromFolder(folder)
+    setLocalSkills(mergeByPath(localSkills, skills))
+    setSkillFolders(current => current.includes(folder) ? current : [...current, folder])
   }
 
   async function launchCodex3D() {
@@ -356,7 +374,8 @@ export function App() {
             onResizeDevTerminal={resizeDevTerminal}
           />
         )}
-        {page === 'Skills & Agents' && renderSkillsAndAgents(localAgents, localSkills)}
+        {page === 'Agents' && renderAgents(localAgents, agentFolders, () => void addAgentsFolder())}
+        {page === 'Skills' && renderSkills(localSkills, skillFolders, () => void addSkillsFolder())}
         {page === 'Settings' && renderSettings(detections)}
       </main>
     </div>
@@ -367,24 +386,36 @@ function getPageDescription(page: Page): string {
   switch (page) {
     case 'Sessions':
       return 'Interact with running Codex3D sessions for the active workspace.'
-    case 'Skills & Agents':
-      return 'Manage reusable agent presets and local Claude skills from ~/.claude/skills.'
+    case 'Agents':
+      return 'Manage reusable agent presets and local Claude agents from ~/.claude/agents.'
+    case 'Skills':
+      return 'Manage local Claude skills from ~/.claude/skills and built-in quick commands.'
     case 'Settings':
       return 'Configure providers, defaults, terminal behavior, and safety controls.'
   }
 }
 
-function renderSkillsAndAgents(localAgents: LocalAgent[], localSkills: LocalSkill[]) {
-  const builtinSkills = ['/buddy status', '/buddy export', '/buddy import', '/help', '/fast', '/commit', '/simplify', '/loop']
+function mergeByPath<T extends { path: string }>(current: T[], incoming: T[]): T[] {
+  const byPath = new Map(current.map(item => [item.path, item]))
+  for (const item of incoming) byPath.set(item.path, item)
+  return [...byPath.values()].sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b)))
+}
 
+function getDisplayName(item: { name?: string; path: string }): string {
+  return item.name ?? item.path
+}
+
+function renderAgents(localAgents: LocalAgent[], folders: string[], onAddFolder: () => void) {
   return (
-    <section className="grid two">
+    <section className="stacked-page">
+      <ResourceTopBar title="Agents" description="Load agent markdown files from ~/.claude/agents or another folder." folders={folders} onAddFolder={onAddFolder} />
+      <div className="grid two">
       <div className="card">
         <h2>Local agents</h2>
         {localAgents.length === 0 ? (
           <p>No agents found in ~/.claude/agents.</p>
         ) : localAgents.map(agent => (
-          <div className="row" key={agent.id} title={agent.path}>
+          <div className="row" key={agent.path} title={agent.path}>
             <div>
               <strong>{agent.name}</strong>
               <span>{agent.description}</span>
@@ -395,11 +426,31 @@ function renderSkillsAndAgents(localAgents: LocalAgent[], localSkills: LocalSkil
         ))}
       </div>
       <div className="card">
+        <h2>Codex3D presets</h2>
+        <div className="skills-grid">
+          {['Codex3D Manual', 'Codex3D Planner', 'Codex3D Implementer', 'Codex3D Verifier', 'Codex3D Reviewer'].map(preset => (
+            <div className="skill-tile" key={preset}>{preset}</div>
+          ))}
+        </div>
+      </div>
+      </div>
+    </section>
+  )
+}
+
+function renderSkills(localSkills: LocalSkill[], folders: string[], onAddFolder: () => void) {
+  const builtinSkills = ['/buddy status', '/buddy export', '/buddy import', '/help', '/fast', '/commit', '/simplify', '/loop']
+
+  return (
+    <section className="stacked-page">
+      <ResourceTopBar title="Skills" description="Load skill folders from ~/.claude/skills or another folder." folders={folders} onAddFolder={onAddFolder} />
+      <div className="grid two">
+      <div className="card">
         <h2>Local skills</h2>
         {localSkills.length === 0 ? (
           <p>No skills found in ~/.claude/skills.</p>
         ) : localSkills.map(skill => (
-          <div className="row" key={skill.id} title={skill.path}>
+          <div className="row" key={skill.path} title={skill.path}>
             <div>
               <strong>{skill.name}</strong>
               <span>{skill.description}</span>
@@ -409,21 +460,27 @@ function renderSkillsAndAgents(localAgents: LocalAgent[], localSkills: LocalSkil
           </div>
         ))}
       </div>
-      <div className="card wide-card">
-        <h2>Codex3D presets</h2>
-        <div className="skills-grid">
-          {['Codex3D Manual', 'Codex3D Planner', 'Codex3D Implementer', 'Codex3D Verifier', 'Codex3D Reviewer'].map(preset => (
-            <div className="skill-tile" key={preset}>{preset}</div>
-          ))}
-        </div>
-      </div>
-      <div className="card wide-card">
+      <div className="card">
         <h2>Built-in quick commands</h2>
         <div className="skills-grid">
           {builtinSkills.map(skill => <div className="skill-tile" key={skill}>{skill}</div>)}
         </div>
       </div>
+      </div>
     </section>
+  )
+}
+
+function ResourceTopBar(props: { title: string; description: string; folders: string[]; onAddFolder: () => void }) {
+  return (
+    <div className="resource-top-bar">
+      <div>
+        <strong>{props.title}</strong>
+        <span>{props.description}</span>
+        <small>{props.folders.join(' · ')}</small>
+      </div>
+      <button type="button" onClick={props.onAddFolder}>Add Folder</button>
+    </div>
   )
 }
 
