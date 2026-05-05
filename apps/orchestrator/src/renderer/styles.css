@@ -1293,6 +1293,68 @@ select {
   background: #dc2626;
 }
 
+.provider-launch-modal {
+  width: min(520px, calc(100vw - 40px));
+}
+
+.provider-option-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.provider-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 10px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.provider-option.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.provider-option input {
+  margin: 0;
+}
+
+.provider-option span {
+  min-width: 0;
+}
+
+.provider-option strong,
+.provider-option small,
+.provider-option b {
+  display: block;
+}
+
+.provider-option strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.provider-option small {
+  overflow: hidden;
+  color: var(--text-mute);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-option b {
+  color: var(--text-mute);
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
 .workspaces-page {
   display: grid;
   gap: 16px;

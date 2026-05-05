@@ -1,8 +1,12 @@
 import type { AgentAdapter } from './AgentAdapter'
+import { codexAdapter } from './codex'
 import { codex3dAdapter } from './codex3d'
+import { opencodeAdapter } from './opencode'
 
 const adapters = new Map<string, AgentAdapter>([
   [codex3dAdapter.id, codex3dAdapter],
+  [codexAdapter.id, codexAdapter],
+  [opencodeAdapter.id, opencodeAdapter],
 ])
 
 export function getAgentAdapter(provider: string): AgentAdapter {

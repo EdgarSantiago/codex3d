@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AgentSession, DevTerminal, Workspace } from '../../shared/types'
+import type { AgentProvider, AgentSession, DevTerminal, Workspace } from '../../shared/types'
 import type { TerminalLayoutNode, TerminalSplitOrientation } from '../stores/appStore'
 import { TerminalTabBar, type TabContextMenuRequest } from './TerminalTabBar'
 import { TerminalView } from './TerminalView'
@@ -25,7 +25,7 @@ type SessionsPageProps = {
   onResizeSplit: (splitId: string, sizes: number[]) => void
   onMoveSessionToPane: (sessionId: string, targetPaneId: string) => void
   onClosePane: (paneId: string) => void
-  onLaunchSession: () => Promise<void>
+  onLaunchSession: (provider: AgentProvider) => Promise<void>
   onRestartSession: (sessionId: string) => Promise<void>
   onStopSession: (sessionId: string) => Promise<void>
   onCloseSession: (sessionId: string) => Promise<void>
@@ -38,6 +38,7 @@ type SessionsPageProps = {
   previewUrl?: string
   previewPanelWidth?: number
   previewPanelHidden: boolean
+  providerOptions: ProviderOption[]
   onSetPreviewUrl: (workspaceId: string, url: string) => void
   onSetPreviewPanelWidth: (width: number) => void
   onSetPreviewPanelHidden: (hidden: boolean) => void
@@ -46,6 +47,13 @@ type SessionsPageProps = {
   onCloseDevTerminal: (terminalId: string) => Promise<void>
   onSendDevInput: (terminalId: string, input: string) => void
   onResizeDevTerminal: (terminalId: string, cols: number, rows: number) => void
+}
+
+export type ProviderOption = {
+  provider: AgentProvider
+  label: string
+  found: boolean
+  detail?: string
 }
 
 export function SessionsPage({
@@ -81,6 +89,7 @@ export function SessionsPage({
   previewUrl,
   previewPanelWidth,
   previewPanelHidden,
+  providerOptions,
   onSetPreviewUrl,
   onSetPreviewPanelWidth,
   onSetPreviewPanelHidden,
@@ -97,6 +106,8 @@ export function SessionsPage({
   const [pendingCloseSession, setPendingCloseSession] = useState<AgentSession | undefined>()
   const [pendingClosePaneId, setPendingClosePaneId] = useState<string | undefined>()
   const [pendingCloseWorkspace, setPendingCloseWorkspace] = useState<Workspace | undefined>()
+  const [launchProvider, setLaunchProvider] = useState<AgentProvider>('codex3d')
+  const [launchModalOpen, setLaunchModalOpen] = useState(false)
 
   useEffect(() => {
     const firstSessionId = sessions[0]?.id
@@ -107,14 +118,20 @@ export function SessionsPage({
     }
   }, [onSelectSession, selectedSessionId, sessions])
 
+  const openLaunchModal = useCallback(() => {
+    setLaunchProvider(providerOptions.find(option => option.provider === launchProvider)?.provider ?? providerOptions[0]?.provider ?? 'codex3d')
+    setLaunchModalOpen(true)
+  }, [launchProvider, providerOptions])
+
   const launchSession = useCallback(async () => {
     setBusy(true)
     try {
-      await onLaunchSession()
+      await onLaunchSession(launchProvider)
+      setLaunchModalOpen(false)
     } finally {
       setBusy(false)
     }
-  }, [onLaunchSession])
+  }, [launchProvider, onLaunchSession])
 
   const restartSession = useCallback(async (sessionId?: string) => {
     if (!sessionId) return
@@ -263,11 +280,12 @@ export function SessionsPage({
                 setPendingCloseSession(session)
               }}
               onRequestTabMenu={request => setTabMenu(request)}
-              onLaunchSession={launchSession}
+              onLaunchSession={openLaunchModal}
               onRestartSession={restartSession}
               onStopSession={stopSession}
               onSendInput={onSendInput}
               onResizeTerminal={onResizeTerminal}
+              providerOptions={providerOptions}
             />
           </div>
         </div>
@@ -391,6 +409,37 @@ export function SessionsPage({
           </div>
         </div>
       ) : null}
+
+      {launchModalOpen ? (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-modal provider-launch-modal" role="dialog" aria-modal="true" aria-labelledby="launch-terminal-title">
+            <h2 id="launch-terminal-title">New terminal</h2>
+            <p>Choose the provider for this agent terminal.</p>
+            <div className="provider-option-list" role="radiogroup" aria-label="Terminal provider">
+              {providerOptions.map(option => (
+                <label key={option.provider} className={`provider-option ${launchProvider === option.provider ? 'selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="terminal-provider"
+                    value={option.provider}
+                    checked={launchProvider === option.provider}
+                    onChange={() => setLaunchProvider(option.provider)}
+                  />
+                  <span>
+                    <strong>{option.label}</strong>
+                    <small>{option.found ? option.detail ?? 'Ready' : option.detail ?? 'Missing binary'}</small>
+                  </span>
+                  <b>{option.found ? 'Ready' : 'Missing'}</b>
+                </label>
+              ))}
+            </div>
+            <div className="confirm-modal-actions">
+              <button type="button" onClick={() => setLaunchModalOpen(false)}>Cancel</button>
+              <button type="button" className="danger-button" disabled={busy} onClick={() => void launchSession()}>Launch terminal</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -505,11 +554,12 @@ type SplitNodeViewProps = {
   onClosePane: (paneId: string) => void
   onRequestCloseSession: (session: AgentSession) => void
   onRequestTabMenu: (request: TabContextMenuRequest) => void
-  onLaunchSession: () => Promise<void>
+  onLaunchSession: () => void
   onRestartSession: (sessionId?: string) => Promise<void>
   onStopSession: (sessionId?: string) => Promise<void>
   onSendInput: (sessionId: string, input: string) => Promise<void>
   onResizeTerminal: (sessionId: string, cols: number, rows: number) => void
+  providerOptions: ProviderOption[]
 }
 
 function unique<T>(items: T[]): T[] {
@@ -569,7 +619,7 @@ function SplitNodeView(props: SplitNodeViewProps) {
           props.onSelectPaneSession(node.id, sessionId)
           props.onSelectSession(sessionId)
         }}
-        onNewTerminal={() => void props.onLaunchSession()}
+        onNewTerminal={props.onLaunchSession}
         onRestartSelected={() => void props.onRestartSession(selectedSession?.id)}
         onStopSelected={() => void props.onStopSession(selectedSession?.id)}
         onSplitPane={orientation => props.onSplitPane(node.id, orientation)}
@@ -587,7 +637,7 @@ function SplitNodeView(props: SplitNodeViewProps) {
         onResize={(cols, rows) => {
           if (selectedSession) props.onResizeTerminal(selectedSession.id, cols, rows)
         }}
-        onNewTerminal={() => void props.onLaunchSession()}
+        onNewTerminal={props.onLaunchSession}
         onRestart={() => void props.onRestartSession(selectedSession?.id)}
         onStop={() => void props.onStopSession(selectedSession?.id)}
       />

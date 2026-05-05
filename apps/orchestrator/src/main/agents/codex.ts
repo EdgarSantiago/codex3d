@@ -2,15 +2,15 @@ import type { LaunchAgentInput, ProviderDetectionResult } from '../../shared/typ
 import type { AgentAdapter, LaunchCommand } from './AgentAdapter'
 import { detectBinary } from './detectBinary'
 
-export const codex3dAdapter: AgentAdapter = {
-  id: 'codex3d',
-  displayName: 'Codex3D',
+export const codexAdapter: AgentAdapter = {
+  id: 'codex',
+  displayName: 'Codex',
 
   async detect(): Promise<ProviderDetectionResult> {
-    const binaryPath = 'codex3d'
+    const binaryPath = 'codex'
     const result = await detectBinary(binaryPath)
     return {
-      provider: 'codex3d',
+      provider: 'codex',
       found: !result.error,
       binaryPath: result.error ? undefined : binaryPath,
       version: result.version,
@@ -20,7 +20,7 @@ export const codex3dAdapter: AgentAdapter = {
 
   buildLaunchCommand(input: LaunchAgentInput): LaunchCommand {
     return {
-      command: input.binaryPath ?? 'codex3d',
+      command: input.binaryPath ?? 'codex',
       args: input.args ?? [],
       cwd: input.cwd,
       env: process.env,

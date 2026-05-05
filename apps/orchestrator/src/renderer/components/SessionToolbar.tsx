@@ -27,7 +27,7 @@ export function SessionToolbar({
       <div className="session-toolbar-title">
         <div>
           <h2>{session?.name ?? 'No session selected'}</h2>
-          <span>{session?.cwd ?? 'Launch or select a Codex3D session'}</span>
+          <span>{session?.cwd ?? 'Launch or select an agent session'}</span>
         </div>
         {session ? <StatusBadge status={session.status} /> : null}
       </div>

@@ -24,8 +24,8 @@ export function TerminalWorkspace({
       <div className="terminal-workspace empty">
         <EmptyTerminalState
           title="No session selected"
-          description="Launch a Codex3D session or select one from the sidebar."
-          actionLabel="Launch Codex3D"
+          description="Launch an agent session or select one from the sidebar."
+          actionLabel="Launch Agent"
           onAction={onLaunch}
         />
       </div>

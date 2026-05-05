@@ -18,7 +18,7 @@ export function TerminalView({ session, output, onInput, onResize, onNewTerminal
       <div className="tabbed-terminal-view empty">
         <EmptyTerminalState
           title="No terminals"
-          description="Create a new terminal tab to start an independent Codex3D session."
+          description="Create a new terminal tab to start an independent agent session."
           actionLabel="New Terminal"
           onAction={onNewTerminal}
         />

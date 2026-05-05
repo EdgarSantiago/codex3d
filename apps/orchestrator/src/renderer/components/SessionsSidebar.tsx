@@ -38,7 +38,7 @@ export function SessionsSidebar({
           <h2>Sessions</h2>
           <span>{sessions.length} total</span>
         </div>
-        <button type="button" className="icon-button" onClick={onLaunchSession} aria-label="Launch Codex3D session">+</button>
+        <button type="button" className="icon-button" onClick={onLaunchSession} aria-label="Launch agent session">+</button>
       </div>
 
       <label className="session-search-label">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AgentRole, AgentSession, DevTerminal, LocalAgent, LocalSkill, SessionCompletionCounts } from '../shared/types'
+import type { AgentProvider, AgentRole, AgentSession, DevTerminal, LocalAgent, LocalSkill, SessionCompletionCounts } from '../shared/types'
 import { SessionsPage } from './components/SessionsPage'
 import { useAppStore } from './stores/appStore'
 
@@ -12,6 +12,13 @@ const navItems = [
 type Page = typeof navItems[number]['label']
 
 const roles: AgentRole[] = ['manual', 'planner', 'implementer', 'verifier', 'reviewer', 'tester', 'researcher']
+const providerLabels: Record<AgentProvider, string> = {
+  codex3d: 'Codex3D',
+  codex: 'Codex',
+  opencode: 'OpenCode',
+  'claude-code': 'Claude Code',
+  shell: 'Shell',
+}
 
 export function App() {
   const {
@@ -119,6 +126,14 @@ export function App() {
 
   const activeWorkspace = workspaces.find(workspace => workspace.id === activeWorkspaceId)
   const workspaceSessions = sessions.filter(session => session.workspaceId === activeWorkspaceId)
+  const providerOptions = detections.length > 0
+    ? detections.map(detection => ({
+      provider: detection.provider,
+      label: providerLabels[detection.provider] ?? detection.provider,
+      found: detection.found,
+      detail: detection.version ?? detection.binaryPath ?? detection.error,
+    }))
+    : [{ provider: 'codex3d' as AgentProvider, label: providerLabels.codex3d, found: true, detail: undefined }]
   const workspaceCompletionCounts = workspaces.reduce<Record<string, number>>((counts, workspace) => {
     counts[workspace.id] = sessions
       .filter(session => session.workspaceId === workspace.id)
@@ -166,19 +181,21 @@ export function App() {
     setSkillFolders(current => current.includes(folder) ? current : [...current, folder])
   }
 
-  async function launchCodex3D() {
+  async function launchAgentTerminal(provider: AgentProvider) {
     if (!activeWorkspace) {
       await chooseWorkspaceFolder()
       return
     }
+    const detection = detections.find(item => item.provider === provider)
     const terminalNumber = workspaceSessions.length + 1
     const session = await window.orchestrator.sessions.launch({
-      provider: 'codex3d',
+      provider,
       role,
       cwd: activeWorkspace.path,
       workspaceId: activeWorkspace.id,
       workspaceMode: activeWorkspace.defaultWorkspaceMode,
-      name: `Terminal ${terminalNumber}`,
+      binaryPath: detection?.binaryPath,
+      name: `${providerLabels[provider] ?? provider} ${terminalNumber}`,
     })
     upsertSession(session)
     addSessionToActivePane(session.id)
@@ -347,7 +364,7 @@ export function App() {
             onResizeSplit={resizeSplit}
             onMoveSessionToPane={moveSessionToPane}
             onClosePane={closePane}
-            onLaunchSession={launchCodex3D}
+            onLaunchSession={launchAgentTerminal}
             onRestartSession={restartSession}
             onStopSession={stopSession}
             onCloseSession={closeSession}
@@ -360,6 +377,7 @@ export function App() {
             previewUrl={activeWorkspaceId ? previewUrlByWorkspaceId[activeWorkspaceId] : undefined}
             previewPanelWidth={activeWorkspaceId ? previewPanelWidthByWorkspaceId[activeWorkspaceId] : undefined}
             previewPanelHidden={activeWorkspaceId ? Boolean(previewPanelHiddenByWorkspaceId[activeWorkspaceId]) : false}
+            providerOptions={providerOptions}
             onSetPreviewUrl={setWorkspacePreviewUrl}
             onSetPreviewPanelWidth={(width: number) => {
               if (activeWorkspaceId) setWorkspacePreviewPanelWidth(activeWorkspaceId, width)
@@ -385,7 +403,7 @@ export function App() {
 function getPageDescription(page: Page): string {
   switch (page) {
     case 'Sessions':
-      return 'Interact with running Codex3D sessions for the active workspace.'
+      return 'Interact with running agent sessions for the active workspace.'
     case 'Agents':
       return 'Manage reusable agent presets and local Claude agents from ~/.claude/agents.'
     case 'Skills':

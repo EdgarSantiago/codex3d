@@ -100,7 +100,15 @@ export function TerminalTabBar({
       </div>
 
       <div className="terminal-tab-actions">
-        <button type="button" className="tab-action primary-tab-action" onClick={onNewTerminal} aria-label="New terminal" title="New terminal: start another Codex3D session in this workspace">+</button>
+        <button
+          type="button"
+          className="tab-action primary-tab-action"
+          onClick={onNewTerminal}
+          aria-label="New terminal"
+          title="New terminal: choose a provider and start an agent session in this workspace"
+        >
+          +
+        </button>
         <button type="button" className="tab-action" onClick={() => onSplitPane('horizontal')} aria-label="Split panel horizontally" title="Split horizontally: show another panel side-by-side">↔</button>
         <button type="button" className="tab-action" onClick={() => onSplitPane('vertical')} aria-label="Split panel vertically" title="Split vertically: show another panel above or below">↕</button>
         <button type="button" className="tab-action" disabled={!selectedSession} onClick={onRestartSelected} aria-label="Restart selected terminal" title="Restart: stop and relaunch the selected terminal in the same workspace folder">↻</button>
