@@ -1,4 +1,5 @@
 import { c as _c } from 'react-compiler-runtime'
+import { PRODUCT_DISPLAY_NAME } from '../../constants/product.js'
 import { Box, Text } from '../../ink.js'
 import { PromptInputHelpMenu } from '../PromptInput/PromptInputHelpMenu.js'
 export function General() {
@@ -8,7 +9,7 @@ export function General() {
     t0 = (
       <Box>
         <Text>
-          Codex3d understands your codebase, makes edits with your permission,
+          {PRODUCT_DISPLAY_NAME} understands your codebase, makes edits with your permission,
           and executes commands — right from your terminal.
         </Text>
       </Box>

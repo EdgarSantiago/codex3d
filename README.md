@@ -131,10 +131,11 @@ Guias avançados e de build local:
 | --- | --- | --- |
 | Compatível com OpenAI | `/provider` ou variáveis de ambiente | Funciona com OpenAI, OpenRouter, DeepSeek, Groq, Mistral, LM Studio e outros servidores compatíveis com `/v1` |
 | Hicap | `/provider` ou variáveis de ambiente compatíveis com OpenAI | Usa autenticação `api-key`, descobre modelos por `/models` não autenticado e suporta modo Responses para modelos `gpt-` |
-| Gemini | `/provider` ou variáveis de ambiente | Suporta chave de API, token de acesso ou fluxo local com ADC |
+| Gemini | `/provider` ou variáveis de ambiente | Suporta chave de API |
 | GitHub Models | `/onboard-github` | Onboarding interativo com credenciais salvas |
 | Codex OAuth | `/provider` | Abre o login do ChatGPT no navegador e armazena credenciais do Codex com segurança |
 | Codex | `/provider` | Usa autenticação existente da Codex CLI, armazenamento seguro do Codex3D ou credenciais por ambiente |
+| Xiaomi MiMo | `/provider` ou variáveis de ambiente | API compatível com OpenAI em `https://api.xiaomimimo.com/v1`; usa `MIMO_API_KEY` e padrão `mimo-v2.5-pro` |
 | Ollama | `/provider`, variáveis de ambiente ou `ollama launch` | Inferência local sem chave de API |
 | Atomic Chat | `/provider`, variáveis de ambiente ou `bun run dev:atomic-chat` | Provedor de modelo local; detecta modelos carregados automaticamente |
 | Bedrock / Vertex / Foundry | variáveis de ambiente | Integrações adicionais para ambientes suportados |
@@ -157,6 +158,7 @@ Codex3D suporta múltiplos provedores, mas o comportamento não é idêntico em 
 - A qualidade das ferramentas depende muito do modelo selecionado
 - Modelos locais menores podem ter dificuldade com fluxos longos de ferramentas em múltiplas etapas
 - Alguns provedores impõem limites menores de saída, e o Codex3D adapta onde possível
+- Xiaomi MiMo usa autenticação por header `api-key` na rota compatível com OpenAI e atualmente não suporta relatório de `/usage` no Codex3D
 
 Para melhores resultados, use modelos com bom suporte a tool/function calling.
 
